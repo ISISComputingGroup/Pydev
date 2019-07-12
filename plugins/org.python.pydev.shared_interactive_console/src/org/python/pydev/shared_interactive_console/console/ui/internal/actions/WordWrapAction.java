@@ -28,7 +28,10 @@ public class WordWrapAction extends Action {
     }
 
     private void update() {
-        setChecked(getStyledText().getWordWrap());
+        StyledText control = getStyledText();
+        if (!control.isDisposed()) {
+            setChecked(control.getWordWrap());
+        }
     }
 
     private StyledText getStyledText() {

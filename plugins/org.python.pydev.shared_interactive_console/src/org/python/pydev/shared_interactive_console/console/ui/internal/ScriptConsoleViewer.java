@@ -639,7 +639,11 @@ public class ScriptConsoleViewer extends TextConsoleViewer implements IScriptCon
      */
     @Override
     public int getCaretOffset() {
-        return getTextWidget().getCaretOffset();
+        final StyledText textWidget = getTextWidget();
+        if (textWidget == null) {
+            return 0;
+        }
+        return textWidget.getCaretOffset();
     }
 
     @Override
