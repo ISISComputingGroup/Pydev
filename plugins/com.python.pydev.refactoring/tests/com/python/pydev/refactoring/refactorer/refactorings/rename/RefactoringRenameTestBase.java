@@ -38,6 +38,7 @@ import org.python.pydev.ast.interpreter_managers.InterpreterInfo;
 import org.python.pydev.ast.listing_utils.PyFileListing;
 import org.python.pydev.ast.listing_utils.PyFileListing.PyFileInfo;
 import org.python.pydev.ast.refactoring.RefactoringRequest;
+import org.python.pydev.core.BaseModuleRequest;
 import org.python.pydev.core.IInterpreterManager;
 import org.python.pydev.core.IModule;
 import org.python.pydev.core.IProjectModulesManager;
@@ -215,7 +216,7 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
         if (DEBUG_TESTS_BASE) {
             System.out.println("-------------- Restoring system pythonpath");
         }
-        restoreSystemPythonPath(force, TestDependent.PYTHON_LIB);
+        restoreSystemPythonPath(force, TestDependent.PYTHON2_LIB);
         if (DEBUG_TESTS_BASE) {
             System.out.println("-------------- Restoring project pythonpath for refactoring nature");
         }
@@ -305,7 +306,8 @@ public abstract class RefactoringRenameTestBase extends RefactoringLocalTestBase
         try {
             IProjectModulesManager modulesManager = (IProjectModulesManager) natureRefactoring.getAstManager()
                     .getModulesManager();
-            IModule module = modulesManager.getModuleInDirectManager(moduleName, natureRefactoring, true);
+            IModule module = modulesManager.getModuleInDirectManager(moduleName, natureRefactoring, true,
+                    new BaseModuleRequest(true));
             if (module == null) {
                 throw new RuntimeException("Unable to get source module for module:" + moduleName);
             }

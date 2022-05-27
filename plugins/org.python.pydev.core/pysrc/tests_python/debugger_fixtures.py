@@ -8,7 +8,6 @@ from tests_python import debugger_unittest
 from tests_python.debugger_unittest import (get_free_port, overrides, IS_CPYTHON, IS_JYTHON, IS_IRONPYTHON,
     CMD_ADD_DJANGO_EXCEPTION_BREAK, CMD_REMOVE_DJANGO_EXCEPTION_BREAK,
     CMD_ADD_EXCEPTION_BREAK, wait_for_condition, IS_PYPY)
-from tests_python.debug_constants import IS_PY2
 from _pydevd_bundle.pydevd_comm_constants import file_system_encoding
 
 import sys
@@ -246,16 +245,14 @@ def case_setup(tmpdir, debugger_runner_simple):
     class CaseSetup(object):
 
         check_non_ascii = False
-        if IS_PY2 and IS_WINDOWS:
-            # Py2 has some issues converting the non latin1 chars to bytes in windows.
-            NON_ASCII_CHARS = u'áéíóú'
-        else:
-            NON_ASCII_CHARS = u'áéíóú汉字'
+        NON_ASCII_CHARS = u'áéíóú汉字'
 
         @contextmanager
         def test_file(
                 self,
                 filename,
+                wait_for_port=True,
+                wait_for_initialization=True,
                 **kwargs
             ):
             import shutil
@@ -274,15 +271,16 @@ def case_setup(tmpdir, debugger_runner_simple):
                 shutil.copyfile(filename, new_filename)
                 filename = new_filename
 
-                if IS_PY2:
-                    filename = filename.encode(file_system_encoding)
-
             WriterThread.TEST_FILE = filename
             for key, value in kwargs.items():
                 assert hasattr(WriterThread, key)
                 setattr(WriterThread, key, value)
 
-            with runner.check_case(WriterThread) as writer:
+            with runner.check_case(
+                    WriterThread,
+                    wait_for_port=wait_for_port,
+                    wait_for_initialization=wait_for_initialization
+                ) as writer:
                 yield writer
 
     return CaseSetup()
@@ -489,10 +487,10 @@ def case_setup_django(debugger_runner_simple):
             version = [int(x) for x in django.get_version().split('.')][:2]
             if version == [1, 7]:
                 django_folder = 'my_django_proj_17'
-            elif version in ([2, 1], [2, 2], [3, 0], [3, 1], [3, 2]):
+            elif version in ([2, 1], [2, 2], [3, 0], [3, 1], [3, 2], [4, 0]):
                 django_folder = 'my_django_proj_21'
             else:
-                raise AssertionError('Can only check django 1.7, 2.1, 2.2, 3.0, 3.1 and 3.2 right now. Found: %s' % (version,))
+                raise AssertionError('Can only check django 1.7, 2.1, 2.2, 3.0, 3.1, 3.2 and 4.0 right now. Found: %s' % (version,))
 
             WriterThread.DJANGO_FOLDER = django_folder
             for key, value in kwargs.items():

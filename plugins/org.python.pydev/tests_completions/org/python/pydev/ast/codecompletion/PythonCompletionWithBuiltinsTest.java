@@ -26,6 +26,7 @@ import org.python.pydev.ast.codecompletion.revisited.visitors.Definition;
 import org.python.pydev.ast.codecompletion.shell.AbstractShell;
 import org.python.pydev.ast.codecompletion.shell.PythonShell;
 import org.python.pydev.ast.codecompletion.shell.PythonShellTest;
+import org.python.pydev.core.BaseModuleRequest;
 import org.python.pydev.core.ICodeCompletionASTManager;
 import org.python.pydev.core.ICompletionState;
 import org.python.pydev.core.IInterpreterManager;
@@ -94,9 +95,9 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
         super.setUp();
 
         ADD_MX_TO_FORCED_BUILTINS = false;
-        if (shell == null && TestDependent.PYTHON_NUMPY_PACKAGES != null) {
+        if (shell == null && TestDependent.PYTHON2_NUMPY_PACKAGES != null) {
             try {
-                FileUtils.copyFile(TestDependent.PYTHON_NUMPY_PACKAGES +
+                FileUtils.copyFile(TestDependent.PYTHON2_NUMPY_PACKAGES +
                         "numpy/core/umath.pyd",
                         TestDependent.TEST_PYSRC_TESTING_LOC
                                 +
@@ -107,16 +108,18 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
         }
 
         CompiledModule.COMPILED_MODULES_ENABLED = true;
-        this.restorePythonPath(TestDependent.GetCompletePythonLib(true) +
-                "|" + TestDependent.PYTHON_WXPYTHON_PACKAGES
-                +
-                "|" + TestDependent.PYTHON_MX_PACKAGES +
-                "|" + TestDependent.PYTHON_NUMPY_PACKAGES +
-                "|"
-                + TestDependent.PYTHON_OPENGL_PACKAGES +
-                "|" + TestDependent.PYTHON_DJANGO_PACKAGES
+        String additionalPaths = "";
+        for (String s : new String[] { TestDependent.PYTHON2_WXPYTHON_PACKAGES, TestDependent.PYTHON2_MX_PACKAGES,
+                TestDependent.PYTHON2_NUMPY_PACKAGES, TestDependent.PYTHON2_OPENGL_PACKAGES,
+                TestDependent.PYTHON2_DJANGO_PACKAGES
 
-                , false);
+        }) {
+            if (s != null) {
+                additionalPaths += ("|" + s);
+            }
+        }
+        this.restorePythonPath(TestDependent.getCompletePythonLib(true, isPython3Test()) + "|" + additionalPaths,
+                false);
 
         codeCompletion = new PyCodeCompletion();
 
@@ -232,7 +235,7 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
         if (SharedCorePlugin.skipKnownFailures()) {
             return;
         }
-        if (TestDependent.PYTHON_MX_PACKAGES != null) {
+        if (TestDependent.PYTHON2_MX_PACKAGES != null) {
             String s = "" +
                     "from mx import DateTime\n" +
                     "DateTime.";
@@ -241,12 +244,11 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
     }
 
     public void testNumpy() throws BadLocationException, IOException, Exception {
-        if (TestDependent.PYTHON_NUMPY_PACKAGES != null) {
+        if (TestDependent.PYTHON2_NUMPY_PACKAGES != null) {
             String s = "" +
                     "from numpy import less\n" +
                     "less.";
-            requestCompl(new File(TestDependent.TEST_PYSRC_TESTING_LOC +
-                    "extendable/not_existent.py"), s, s.length(), -1,
+            requestCompl(s, s.length(), -1,
                     new String[] { "types", "ntypes", "nout", "nargs", "nin" });
         }
     }
@@ -325,11 +327,12 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
             return;
         }
 
-        if (TestDependent.PYTHON_NUMPY_PACKAGES != null) {
+        if (TestDependent.PYTHON2_NUMPY_PACKAGES != null) {
             String s = "" +
                     "from extendable.bootstrap_dll import umath\n" +
                     "umath.";
-            IModule module = nature.getAstManager().getModule("extendable.bootstrap_dll.umath", nature, true);
+            IModule module = nature.getAstManager().getModule("extendable.bootstrap_dll.umath", nature, true,
+                    new BaseModuleRequest(true));
             assertTrue("Expected CompiledModule. Found: " + module.getClass(), module instanceof CompiledModule);
             //NOTE: The test can fail if numpy is not available (umath.pyd depends on numpy)
             requestCompl(s, s.length(), -1, new String[] { "less" });
@@ -342,10 +345,11 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
             return;
         }
 
-        if (TestDependent.PYTHON_NUMPY_PACKAGES != null) {
+        if (TestDependent.PYTHON2_NUMPY_PACKAGES != null) {
             String s = "" +
                     "from extendable.bootstrap_dll.umath import ";
-            IModule module = nature.getAstManager().getModule("extendable.bootstrap_dll.umath", nature, true);
+            IModule module = nature.getAstManager().getModule("extendable.bootstrap_dll.umath", nature, true,
+                    new BaseModuleRequest(true));
             assertTrue(module instanceof CompiledModule);
             //NOTE: The test can fail if numpy is not available (umath.pyd depends on numpy)
             requestCompl(s, s.length(), -1, new String[] { "less" });
@@ -353,7 +357,7 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
     }
 
     public void testWxPython1() throws BadLocationException, IOException, Exception {
-        if (TestDependent.PYTHON_WXPYTHON_PACKAGES != null) { //we can only test what we have
+        if (TestDependent.PYTHON2_WXPYTHON_PACKAGES != null) { //we can only test what we have
             String s = "" +
                     "from wxPython.wx import *\n" +
                     "import wx\n" +
@@ -377,7 +381,7 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
 
     public void testCompleteImportBuiltinReference2() throws BadLocationException, IOException, Exception {
         String s;
-        if (TestDependent.PYTHON_WXPYTHON_PACKAGES != null) { //we can only test what we have
+        if (TestDependent.PYTHON2_WXPYTHON_PACKAGES != null) { //we can only test what we have
             s = "" +
                     "from wx import ";
             requestCompl(s, s.length(), -1, new String[] { "glcanvas" });
@@ -388,7 +392,7 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
         if (SharedCorePlugin.skipKnownFailures()) {
             return;
         }
-        if (TestDependent.PYTHON_OPENGL_PACKAGES != null) {
+        if (TestDependent.PYTHON2_OPENGL_PACKAGES != null) {
             final String s = "from OpenGL import ";
             requestCompl(s, s.length(), -1, new String[] { "GLU", "GLUT" });
         }
@@ -400,20 +404,16 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
             return;
         }
 
-        if (TestDependent.PYTHON_OPENGL_PACKAGES != null) {
+        if (TestDependent.PYTHON2_OPENGL_PACKAGES != null) {
             final String s = "from OpenGL.GL import ";
             requestCompl(s, s.length(), -1, new String[] { "glPushMatrix" });
         }
     }
 
     public void testCompleteImportBuiltinReference() throws BadLocationException, IOException, Exception {
-
-        if (SharedCorePlugin.skipKnownFailures()) {
-            return;
-        }
         String s;
 
-        if (TestDependent.PYTHON_WXPYTHON_PACKAGES != null) { //we can only test what we have
+        if (TestDependent.PYTHON2_WXPYTHON_PACKAGES != null) { //we can only test what we have
             s = "" +
                     "from wxPython.wx import wxButton\n" +
                     "                \n" +
@@ -442,16 +442,6 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
                 "                \n" +
                 "os.";
         requestCompl(s, s.length(), -1, new String[] { "path" });
-
-        if (TestDependent.PYTHON_QT4_PACKAGES != null) { //we can only test what we have
-            //check for builtins with reference..3
-            s = "" +
-                    "from PyQt4.QtGui import *\n" +
-                    "                \n" +
-                    "q = QLabel()    \n" +
-                    "q.";
-            requestCompl(s, s.length(), -1, new String[] { "acceptDrops()", "childEvent()" });
-        }
 
         //check for builtins with reference..3
         s = "" +
@@ -517,7 +507,7 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
     }
 
     public void testDjango() throws Exception {
-        if (TestDependent.PYTHON_DJANGO_PACKAGES != null) {
+        if (TestDependent.PYTHON2_DJANGO_PACKAGES != null) {
             String s = "from django.db import models\n" +
                     "\n" +
                     "class HelperForPydevCompletion(models.Model):\n"
@@ -531,8 +521,8 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
     }
 
     public void testDjango2() throws Exception {
-        if (TestDependent.PYTHON_DJANGO_PACKAGES != null) {
-            assertTrue(new File(TestDependent.PYTHON_DJANGO_PACKAGES).exists());
+        if (TestDependent.PYTHON2_DJANGO_PACKAGES != null) {
+            assertTrue(new File(TestDependent.PYTHON2_DJANGO_PACKAGES).exists());
             String s = "from django.db import models\n" +
                     "\n" +
                     "class HelperForPydevCompletion(models.Model):\n"
@@ -546,7 +536,7 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
     }
 
     public void testDjango3() throws Exception {
-        if (TestDependent.PYTHON_DJANGO_PACKAGES != null) {
+        if (TestDependent.PYTHON2_DJANGO_PACKAGES != null) {
             String s = "from django.contrib.auth.models import User\n" +
                     "User.";
 
@@ -599,7 +589,7 @@ public class PythonCompletionWithBuiltinsTest extends CodeCompletionTestsBase {
     }
 
     public void testBuiltinCached() throws Exception {
-        IModule module = nature.getAstManager().getModule("__builtin__", nature, true);
+        IModule module = nature.getAstManager().getModule("__builtin__", nature, true, new BaseModuleRequest(false));
         assertTrue(module instanceof CompiledModule);
         ISystemModulesManager systemModulesManager = nature.getAstManager().getModulesManager()
                 .getSystemModulesManager();

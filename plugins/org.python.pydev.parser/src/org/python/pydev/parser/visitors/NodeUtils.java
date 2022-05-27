@@ -11,6 +11,7 @@ package org.python.pydev.parser.visitors;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -77,6 +78,7 @@ import org.python.pydev.parser.jython.ast.comprehensionType;
 import org.python.pydev.parser.jython.ast.excepthandlerType;
 import org.python.pydev.parser.jython.ast.exprType;
 import org.python.pydev.parser.jython.ast.keywordType;
+import org.python.pydev.parser.jython.ast.operatorType;
 import org.python.pydev.parser.jython.ast.sliceType;
 import org.python.pydev.parser.jython.ast.stmtType;
 import org.python.pydev.parser.jython.ast.suiteType;
@@ -92,7 +94,6 @@ import org.python.pydev.shared_core.string.FastStringBuffer;
 import org.python.pydev.shared_core.string.FullRepIterable;
 import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.string.TextSelectionUtils;
-import org.python.pydev.shared_core.utils.Reflection;
 
 public class NodeUtils {
 
@@ -354,6 +355,16 @@ public class NodeUtils {
         return s;
     }
 
+    public static String getFullRepresentationString(ClassDef node) {
+        ClassDef def = node;
+        return ((NameTok) def.name).id;
+    }
+
+    public static String getFullRepresentationString(FunctionDef node) {
+        FunctionDef def = node;
+        return ((NameTok) def.name).id;
+    }
+
     public static String getFullRepresentationString(SimpleNode node) {
         return getFullRepresentationString(node, false);
     }
@@ -378,9 +389,9 @@ public class NodeUtils {
         if (node instanceof Call) {
             Call c = (Call) node;
             node = c.func;
-            if (Reflection.hasAttr(node, "value") && Reflection.hasAttr(node, "attr")) {
-                return getFullRepresentationString((SimpleNode) Reflection.getAttrObj(node, "value")) + "."
-                        + discoverRep(Reflection.getAttrObj(node, "attr"));
+            if (node instanceof Attribute) {
+                Attribute attribute = (Attribute) node;
+                return getFullRepresentationString(attribute.value) + "." + discoverRep(attribute.attr);
             }
         }
 
@@ -2174,4 +2185,84 @@ public class NodeUtils {
         return node;
     }
 
+    public static List<String> extractValuesFromSubscriptSlice(sliceType slice) {
+        List<String> values = new ArrayList<String>();
+
+        if (slice instanceof ExtSlice) {
+            ExtSlice extSlice = (ExtSlice) slice;
+            if (extSlice != null && extSlice.dims != null) {
+                for (sliceType dim : extSlice.dims) {
+                    if (dim instanceof Index) {
+                        List<String> valuesFromIndex = extractValuesFromSubscriptIndex((Index) dim);
+                        if (valuesFromIndex != null && valuesFromIndex.size() > 0) {
+                            values.addAll(valuesFromIndex);
+                        }
+                    }
+                }
+            }
+        } else if (slice instanceof Index) {
+            List<String> valuesFromIndex = extractValuesFromSubscriptIndex((Index) slice);
+            if (valuesFromIndex != null && valuesFromIndex.size() > 0) {
+                values.addAll(valuesFromIndex);
+            }
+        }
+
+        return values;
+    }
+
+    private static List<String> extractValuesFromSubscriptIndex(Index index) {
+        if (index.value instanceof BinOp) {
+            BinOp binOp = (BinOp) index.value;
+            return extractValuesFromBinOp(binOp, BinOp.BitOr);
+        } else if (index.value instanceof Name) {
+            return Arrays.asList(new String[] { getFullRepresentationString(index.value) });
+        } else if (index.value instanceof Subscript) {
+            Subscript subscript = (Subscript) index.value;
+            return extractValuesFromSubscriptSlice(subscript.slice);
+        }
+        return null;
+    }
+
+    public static List<String> extractValuesFromBinOp(exprType node) {
+        return extractValuesFromBinOp(node, 0);
+    }
+
+    public static List<String> extractValuesFromBinOp(exprType node, int op) {
+        List<String> values = new ArrayList<String>();
+
+        if (op >= operatorType.operatorTypeNames.length) {
+            return values;
+        }
+
+        if (node instanceof BinOp) {
+            BinOp binOp = (BinOp) node;
+            if (op < 1 || binOp.op == op) {
+                values.addAll(getInternalBinOpNodeValues(binOp.left, op));
+                values.addAll(getInternalBinOpNodeValues(binOp.right, op));
+            }
+        }
+
+        return values;
+    }
+
+    private static List<String> getInternalBinOpNodeValues(exprType node, int op) {
+        List<String> values = new ArrayList<String>();
+        if (node instanceof BinOp) {
+            values.addAll(NodeUtils.extractValuesFromBinOp(node, op));
+        } else if (node instanceof Subscript) {
+            Subscript subscript = (Subscript) node;
+            values.addAll(NodeUtils.extractValuesFromSubscriptSlice(subscript.slice));
+        } else if (node instanceof Str) {
+            Str str = (Str) node;
+            if (str.s != null && !str.s.isBlank()) {
+                values.add(str.s);
+            }
+        } else {
+            String rep = NodeUtils.getFullRepresentationString(node, true);
+            if (rep != null && !rep.isBlank()) {
+                values.add(rep);
+            }
+        }
+        return values;
+    }
 }

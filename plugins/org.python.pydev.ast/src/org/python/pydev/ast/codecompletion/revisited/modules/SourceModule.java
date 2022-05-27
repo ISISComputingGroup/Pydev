@@ -41,6 +41,7 @@ import org.python.pydev.core.ICompletionState.LookingFor;
 import org.python.pydev.core.IDefinition;
 import org.python.pydev.core.ILocalScope;
 import org.python.pydev.core.IModule;
+import org.python.pydev.core.IModuleRequestState;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.ISourceModule;
 import org.python.pydev.core.IToken;
@@ -56,7 +57,6 @@ import org.python.pydev.core.preferences.FileTypesPreferences;
 import org.python.pydev.core.structure.CompletionRecursionException;
 import org.python.pydev.parser.jython.SimpleNode;
 import org.python.pydev.parser.jython.ast.Assign;
-import org.python.pydev.parser.jython.ast.Attribute;
 import org.python.pydev.parser.jython.ast.Call;
 import org.python.pydev.parser.jython.ast.ClassDef;
 import org.python.pydev.parser.jython.ast.Expr;
@@ -515,8 +515,8 @@ public class SourceModule extends AbstractModule implements ISourceModule {
                                             d.col,
                                             manager.getNature());
                                 } else if (d.ast instanceof ClassDef) {
-                                    TokensList toks = ((SourceModule) d.module).getClassToks(initialState,
-                                            manager, d.ast);
+                                    TokensList toks = ((SourceModule) d.module).getClassToks(initialState, manager,
+                                            (ClassDef) d.ast);
                                     if (lookingFor != null) {
                                         toks.setLookingFor(lookingFor);
                                     }
@@ -600,11 +600,15 @@ public class SourceModule extends AbstractModule implements ISourceModule {
                     }
                 }
             } else if (rep.equals(activationToken)) {
-                TokensList classToks = getClassToks(initialState, manager, ast);
+                TokensList classToks;
                 if (ast instanceof ClassDef) {
+                    classToks = getClassToks(initialState, manager, (ClassDef) ast);
                     initialState.setLookingFor(ICompletionState.LookingFor.LOOKING_FOR_UNBOUND_VARIABLE);
                     classToks.setLookingFor(initialState.getLookingFor());
+                } else {
+                    classToks = getInnerToks(initialState, manager, ast);
                 }
+
                 if (classToks.empty()) {
                     if (initialState.getLookingFor() == ICompletionState.LookingFor.LOOKING_FOR_ASSIGN) {
                         continue;
@@ -621,6 +625,27 @@ public class SourceModule extends AbstractModule implements ISourceModule {
     /**
      * @param initialState
      * @param manager
+     * @param ast
+     * @return TokensList
+     */
+    public TokensList getClassToks(ICompletionState initialState, ICodeCompletionASTManager manager,
+            ClassDef classDef) {
+        ClassDefTokensExtractor classTokensExtractor = new ClassDefTokensExtractor(classDef, this, initialState);
+        return classTokensExtractor.getTokens(manager);
+    }
+
+    public TokensList getInnerToks(ICompletionState initialState, ICodeCompletionASTManager manager, SimpleNode ast) {
+        String moduleName = name;
+        TokensList modToks = new TokensList(
+                GlobalModelVisitor.getTokens(ast, GlobalModelVisitor.INNER_DEFS, moduleName, initialState,
+                        false, this.nature));
+        modToks.setLookingFor(initialState.getLookingFor());
+        return modToks;
+    }
+
+    /**
+     * @param initialState
+     * @param manager
      * @param value
      * @return
      * @throws CompletionRecursionException
@@ -632,69 +657,6 @@ public class SourceModule extends AbstractModule implements ISourceModule {
         copy.setActivationToken(value);
         TokensList completionsForModule = manager.getCompletionsForModule(module, copy);
         return completionsForModule;
-    }
-
-    /**
-     * @param initialState
-     * @param manager
-     * @param ast
-     * @return
-     */
-    public TokensList getClassToks(ICompletionState initialState, ICodeCompletionASTManager manager, SimpleNode ast) {
-        TokensList modToks = new TokensList(
-                GlobalModelVisitor.getTokens(ast, GlobalModelVisitor.INNER_DEFS, name, initialState,
-                        false, this.nature));//name = moduleName
-
-        try {
-            //COMPLETION: get the completions for the whole hierarchy if this is a class!!
-            if (ast instanceof ClassDef) {
-                ClassDef c = (ClassDef) ast;
-                for (int j = 0; j < c.bases.length; j++) {
-                    TokensList completions = getCompletionsForBase(initialState, manager, c, j);
-                    modToks.addAll(completions);
-                }
-            }
-        } catch (CompletionRecursionException e) {
-            // let's return what we have so far...
-        }
-        modToks.setLookingFor(initialState.getLookingFor());
-        return modToks;
-    }
-
-    public TokensList getCompletionsForBase(ICompletionState initialState, ICodeCompletionASTManager manager,
-            ClassDef classDef, int baseIndex) throws CompletionRecursionException {
-        ICompletionState state;
-        if (classDef.bases[baseIndex] instanceof Name) {
-            Name n = (Name) classDef.bases[baseIndex];
-            String base = n.id;
-            //An error in the programming might result in an error.
-            //
-            //e.g. The case below results in a loop.
-            //
-            //class A(B):
-            //
-            //    def a(self):
-            //        pass
-            //
-            //class B(A):
-            //
-            //    def b(self):
-            //        pass
-            state = initialState.getCopy();
-            state.setActivationToken(base);
-
-            state.checkMemory(this, base);
-
-            return manager.getCompletionsForModule(this, state);
-        } else if (classDef.bases[baseIndex] instanceof Attribute) {
-            Attribute attr = (Attribute) classDef.bases[baseIndex];
-            String s = NodeUtils.getFullRepresentationString(attr);
-
-            state = initialState.getCopy();
-            state.setActivationToken(s);
-            return manager.getCompletionsForModule(this, state);
-        }
-        return null;
     }
 
     /**
@@ -759,7 +721,8 @@ public class SourceModule extends AbstractModule implements ISourceModule {
     public Definition[] findDefinition(ICompletionState state, int line, int col, final IPythonNature nature)
             throws Exception {
         Object key = new TupleN(state.getActivationToken(), line, col, this);
-        Definition[] found = (Definition[]) state.getObj(key);
+        ICompletionCache completionCache = state;
+        Definition[] found = (Definition[]) completionCache.getObj(key);
         if (found != null) {
             return found;
         }
@@ -982,7 +945,7 @@ public class SourceModule extends AbstractModule implements ISourceModule {
                                         if (this.getName().equals(parentPackage)) {
                                             module = this;
                                         } else {
-                                            module = astManager.getModule(parentPackage, nature, true);
+                                            module = astManager.getModule(parentPackage, nature, true, state);
                                         }
                                         if (module != null) {
                                             ret.add(new Definition(iToken, null, module));
@@ -1038,7 +1001,7 @@ public class SourceModule extends AbstractModule implements ISourceModule {
                         IToken token = entry.getToken();
                         if (token.getRepresentation().equals(withoutSelf)) {
                             String parentPackage = token.getParentPackage();
-                            IModule module = astManager.getModule(parentPackage, nature, true);
+                            IModule module = astManager.getModule(parentPackage, nature, true, state);
 
                             if (token instanceof SourceToken
                                     && (module != null || this.name == null || this.name.equals(parentPackage))) {
@@ -1131,7 +1094,7 @@ public class SourceModule extends AbstractModule implements ISourceModule {
                     //multiple representations in the absolute form:
                     //as a relative import
                     //as absolute import
-                    getModuleDefinition(nature, toRet, mod, moduleImported);
+                    getModuleDefinition(nature, toRet, mod, moduleImported, state);
                 }
 
             } else {
@@ -1142,11 +1105,11 @@ public class SourceModule extends AbstractModule implements ISourceModule {
     }
 
     private IDefinition getModuleDefinition(IPythonNature nature, ArrayList<Definition> toRet, SourceModule mod,
-            String moduleImported) {
+            String moduleImported, IModuleRequestState moduleRequest) {
         String rel = AbstractToken.makeRelative(mod.getName(), moduleImported);
-        IModule modFound = nature.getAstManager().getModule(rel, nature, false);
+        IModule modFound = nature.getAstManager().getModule(rel, nature, false, moduleRequest);
         if (modFound == null) {
-            modFound = nature.getAstManager().getModule(moduleImported, nature, false);
+            modFound = nature.getAstManager().getModule(moduleImported, nature, false, moduleRequest);
         }
         if (modFound != null) {
             //ok, found it
@@ -1239,7 +1202,7 @@ public class SourceModule extends AbstractModule implements ISourceModule {
                     String parentPackage = token.getParentPackage();
                     IModule module = this;
                     if (nature != null) {
-                        IModule mod = nature.getAstManager().getModule(parentPackage, nature, true);
+                        IModule mod = nature.getAstManager().getModule(parentPackage, nature, true, state);
                         if (mod != null) {
                             module = mod;
                         }
@@ -1297,7 +1260,7 @@ public class SourceModule extends AbstractModule implements ISourceModule {
                         modName += ".";
                     }
                     modName += token.getRepresentation();
-                    IModule module = nature.getAstManager().getModule(modName, nature, true);
+                    IModule module = nature.getAstManager().getModule(modName, nature, true, state);
                     if (module == null) {
                         return null;
                     } else {
@@ -1310,7 +1273,7 @@ public class SourceModule extends AbstractModule implements ISourceModule {
 
                     IModule module = null;
                     for (String modName : iterable) {
-                        module = nature.getAstManager().getModule(modName, nature, true);
+                        module = nature.getAstManager().getModule(modName, nature, true, state);
                         if (module != null) {
                             break;
                         }

@@ -104,13 +104,13 @@ def build():
         # set VS100COMNTOOLS=C:\Program Files (x86)\Microsoft Visual Studio 9.0\Common7\Tools
 
         env = os.environ.copy()
-        if sys.version_info[:2] in ((2, 6), (2, 7), (3, 5), (3, 6), (3, 7), (3, 8), (3, 9)):
+        if sys.version_info[:2] in ((2, 6), (2, 7), (3, 5), (3, 6), (3, 7), (3, 8), (3, 9), (3, 10)):
             import setuptools  # We have to import it first for the compiler to be found
             from distutils import msvc9compiler
 
             if sys.version_info[:2] in ((2, 6), (2, 7)):
                 vcvarsall = msvc9compiler.find_vcvarsall(9.0)
-            elif sys.version_info[:2] in ((3, 5), (3, 6), (3, 7), (3, 8), (3, 9)):
+            elif sys.version_info[:2] in ((3, 5), (3, 6), (3, 7), (3, 8), (3, 9), (3, 10)):
                 vcvarsall = msvc9compiler.find_vcvarsall(14.0)
             if vcvarsall is None or not os.path.exists(vcvarsall):
                 raise RuntimeError('Error finding vcvarsall.')
@@ -151,7 +151,7 @@ def build():
         additional_args.append('--force-cython')  # Build always forces cython!
 
     args = [
-        sys.executable, os.path.join(os.path.dirname(__file__), '..', 'setup_cython.py'), 'build_ext', '--inplace',
+        sys.executable, os.path.join(os.path.dirname(__file__), '..', 'setup_pydevd_cython.py'), 'build_ext', '--inplace',
     ] + additional_args
     print('Calling args: %s' % (args,))
     subprocess.check_call(args, env=env,)

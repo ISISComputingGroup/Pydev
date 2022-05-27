@@ -88,6 +88,16 @@ public final class CompletionStateWrapper implements ICompletionState {
         line = i;
     }
 
+    @Override
+    public boolean getAcceptTypeshed() {
+        return wrapped.getAcceptTypeshed();
+    }
+
+    @Override
+    public void setAcceptTypeshed(boolean acceptTypeshed) {
+        wrapped.setAcceptTypeshed(acceptTypeshed);
+    }
+
     //delegated --------------------------------------------------------------------------------------------------------
     @Override
     public void checkDefinitionMemory(IModule module, IDefinition definition) throws CompletionRecursionException {
@@ -156,7 +166,7 @@ public final class CompletionStateWrapper implements ICompletionState {
 
     @Override
     public ICompletionState getCopy() {
-        return wrapped.getCopy();
+        return wrapped.getCopyWithActTok(this.activationToken);
     }
 
     @Override

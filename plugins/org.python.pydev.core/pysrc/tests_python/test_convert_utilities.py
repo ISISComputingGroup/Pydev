@@ -1,10 +1,17 @@
 # coding: utf-8
 import os.path
-from _pydevd_bundle.pydevd_constants import IS_WINDOWS, IS_PY2
-from _pydev_bundle._pydev_filesystem_encoding import getfilesystemencoding
+from _pydevd_bundle.pydevd_constants import IS_WINDOWS
 import io
 from _pydev_bundle.pydev_log import log_context
 import pytest
+import sys
+
+
+@pytest.fixture(autouse=True)
+def _reset_ide_os():
+    yield
+    from pydevd_file_utils import set_ide_os
+    set_ide_os('WINDOWS' if sys.platform == 'win32' else 'UNIX')
 
 
 def test_convert_utilities(tmpdir):
@@ -14,7 +21,7 @@ def test_convert_utilities(tmpdir):
 
     if IS_WINDOWS:
         normalized = pydevd_file_utils.normcase(test_dir)
-        assert isinstance(normalized, str)  # bytes on py2, unicode on py3
+        assert isinstance(normalized, str)
         assert normalized.lower() == normalized
 
         upper_version = os.path.join(test_dir, 'ÁÉÍÓÚ')
@@ -36,7 +43,7 @@ def test_convert_utilities(tmpdir):
 
             assert pydevd_file_utils.get_path_with_real_case('<does not EXIST>') == '<does not EXIST>'
             real_case = pydevd_file_utils.get_path_with_real_case(normalized)
-            assert isinstance(real_case, str)  # bytes on py2, unicode on py3
+            assert isinstance(real_case, str)
             # Note test_dir itself cannot be compared with because pytest may
             # have passed the case normalized.
             assert real_case.endswith("Test_Convert_Utilities")
@@ -45,15 +52,6 @@ def test_convert_utilities(tmpdir):
                 # Check that we have the expected paths in the cache.
                 assert pydevd_file_utils._listdir_cache[os.path.dirname(normalized).lower()] == ['Test_Convert_Utilities']
                 assert pydevd_file_utils._listdir_cache[(os.path.dirname(normalized).lower(), 'Test_Convert_Utilities'.lower())] == real_case
-
-            if IS_PY2:
-                # Test with unicode in python 2 too.
-                real_case = pydevd_file_utils.get_path_with_real_case(normalized.decode(
-                    getfilesystemencoding()))
-                assert isinstance(real_case, str)  # bytes on py2, unicode on py3
-                # Note test_dir itself cannot be compared with because pytest may
-                # have passed the case normalized.
-                assert real_case.endswith("Test_Convert_Utilities")
 
         # Check that it works with a shortened path.
         shortened = pydevd_file_utils.convert_to_short_pathname(normalized)
@@ -99,20 +97,26 @@ def test_source_reference(tmpdir):
         assert pydevd_file_utils.get_server_filename_from_source_reference(source_reference) == '/another/my'
 
 
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows-only test.')
+def test_translate_only_drive():
+    import pydevd_file_utils
+    assert pydevd_file_utils.get_path_with_real_case('c:\\') == 'C:\\'
+
+
 def test_to_server_and_to_client(tmpdir):
     try:
 
         def check(obtained, expected):
             assert obtained == expected, '%s (%s) != %s (%s)' % (obtained, type(obtained), expected, type(expected))
             if isinstance(obtained, tuple):
-                assert isinstance(obtained[0], str)  # bytes on py2, unicode on py3
+                assert isinstance(obtained[0], str)
             else:
-                assert isinstance(obtained, str)  # bytes on py2, unicode on py3
+                assert isinstance(obtained, str)
 
             if isinstance(expected, tuple):
-                assert isinstance(expected[0], str)  # bytes on py2, unicode on py3
+                assert isinstance(expected[0], str)
             else:
-                assert isinstance(expected, str)  # bytes on py2, unicode on py3
+                assert isinstance(expected, str)
 
         import pydevd_file_utils
         if IS_WINDOWS:

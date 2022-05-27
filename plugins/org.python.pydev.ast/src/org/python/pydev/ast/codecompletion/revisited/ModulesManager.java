@@ -46,6 +46,7 @@ import org.python.pydev.core.ICompletionState;
 import org.python.pydev.core.ICompletionState.ModuleHandleOrNotGotten;
 import org.python.pydev.core.IGrammarVersionProvider;
 import org.python.pydev.core.IModule;
+import org.python.pydev.core.IModuleRequestState;
 import org.python.pydev.core.IModulesManager;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.MisconfigurationException;
@@ -226,6 +227,7 @@ public abstract class ModulesManager implements IModulesManager {
     protected final Object modulesKeysLock = new Object();
 
     protected static final ModulesManagerCache cache = new ModulesManagerCache();
+    protected static final ModulesManagerCache cachePredefined = new ModulesManagerCache();
     private static final CachePyiModules cachePyiModules = new CachePyiModules();
 
     /**
@@ -572,6 +574,7 @@ public abstract class ModulesManager implements IModulesManager {
 
         synchronized (modulesKeysLock) {
             cache.clear();
+            cachePredefined.clear();
             //assign to instance variable
             this.modulesKeys.clear();
             this.modulesKeys.putAll(keys);
@@ -849,8 +852,9 @@ public abstract class ModulesManager implements IModulesManager {
     }
 
     @Override
-    public IModule getModule(String name, IPythonNature nature, boolean dontSearchInit) {
-        return getModule(true, name, nature, dontSearchInit);
+    public IModule getModule(String name, IPythonNature nature, boolean dontSearchInit,
+            IModuleRequestState moduleRequest) {
+        return getModule(true, name, nature, dontSearchInit, moduleRequest);
     }
 
     /**
@@ -911,7 +915,7 @@ public abstract class ModulesManager implements IModulesManager {
      * @return the module represented by this name
      */
     protected IModule getModule(boolean acceptCompiledModule, String name, IPythonNature nature,
-            boolean dontSearchInit) {
+            boolean dontSearchInit, IModuleRequestState moduleRequest) {
         synchronized (lockTemporaryModules) {
             SortedMap<Integer, IModule> map = temporaryModules.get(name);
             if (map != null && map.size() > 0) {
@@ -1213,6 +1217,7 @@ public abstract class ModulesManager implements IModulesManager {
      */
     public static void clearCache() {
         ModulesManager.cache.clear();
+        ModulesManager.cachePredefined.clear();
         ModulesManager.cachePyiModules.clear();
     }
 

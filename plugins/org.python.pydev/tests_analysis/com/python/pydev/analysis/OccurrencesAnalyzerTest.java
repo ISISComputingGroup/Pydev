@@ -29,6 +29,7 @@ import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.core.TestDependent;
 import org.python.pydev.core.autoedit.TestIndentPrefs;
+import org.python.pydev.core.preferences.InterpreterGeneralPreferences;
 import org.python.pydev.shared_core.io.FileUtils;
 
 public class OccurrencesAnalyzerTest extends AnalysisTestsBase {
@@ -47,6 +48,18 @@ public class OccurrencesAnalyzerTest extends AnalysisTestsBase {
             e.printStackTrace();
         }
         System.exit(0);
+    }
+
+    @Override
+    public void setUp() throws Exception {
+        InterpreterGeneralPreferences.FORCE_USE_TYPESHED = true;
+        super.setUp();
+    }
+
+    @Override
+    public void tearDown() throws Exception {
+        super.tearDown();
+        InterpreterGeneralPreferences.FORCE_USE_TYPESHED = null;
     }
 
     public void testUnusedImports() {
@@ -499,7 +512,7 @@ public class OccurrencesAnalyzerTest extends AnalysisTestsBase {
 
     public void testCompiledUnusedImports5() {
 
-        if (TestDependent.PYTHON_WXPYTHON_PACKAGES != null) {
+        if (TestDependent.PYTHON2_WXPYTHON_PACKAGES != null) {
             doc = new Document("from wxPython.wx import wxButton\n" +
                     "");
             analyzer = new OccurrencesAnalyzer();
@@ -512,7 +525,7 @@ public class OccurrencesAnalyzerTest extends AnalysisTestsBase {
 
     public void testCompiledWx() {
 
-        if (TestDependent.PYTHON_WXPYTHON_PACKAGES != null) {
+        if (TestDependent.PYTHON2_WXPYTHON_PACKAGES != null) {
             //            CompiledModule.TRACE_COMPILED_MODULES = true;
             doc = new Document("from wx import glcanvas\n" +
                     "print glcanvas.GLCanvas\n" +

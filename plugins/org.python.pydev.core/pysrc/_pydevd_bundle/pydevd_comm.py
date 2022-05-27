@@ -67,12 +67,13 @@ import linecache
 import os
 
 from _pydev_bundle.pydev_imports import _queue
-from _pydev_imps._pydev_saved_modules import time
-from _pydev_imps._pydev_saved_modules import threading
-from _pydev_imps._pydev_saved_modules import socket as socket_module
+from _pydev_bundle._pydev_saved_modules import time
+from _pydev_bundle._pydev_saved_modules import threading
+from _pydev_bundle._pydev_saved_modules import socket as socket_module
 from _pydevd_bundle.pydevd_constants import (DebugInfoHolder, IS_WINDOWS, IS_JYTHON,
-    IS_PY2, IS_PY36_OR_GREATER, STATE_RUN, dict_keys, ASYNC_EVAL_TIMEOUT_SEC,
-    get_global_debugger, GetGlobalDebugger, set_global_debugger, silence_warnings_decorator)  # Keep for backward compatibility @UnusedImport
+    IS_PY36_OR_GREATER, STATE_RUN, ASYNC_EVAL_TIMEOUT_SEC,
+    get_global_debugger, GetGlobalDebugger, set_global_debugger,  # Keep for backward compatibility @UnusedImport
+    silence_warnings_decorator, filter_all_warnings)
 from _pydev_bundle.pydev_override import overrides
 import weakref
 from _pydev_bundle._pydev_completer import extract_token_and_qualifier
@@ -88,25 +89,17 @@ from _pydevd_bundle.pydevd_dont_trace_files import PYDEV_FILE
 import dis
 from _pydevd_bundle.pydevd_frame_utils import create_frames_list_from_exception_cause
 import pydevd_file_utils
-try:
-    from urllib import quote_plus, unquote_plus  # @UnresolvedImport
-except:
-    from urllib.parse import quote_plus, unquote_plus  # @Reimport @UnresolvedImport
-
+import itertools
+from urllib.parse import quote_plus, unquote_plus
 import pydevconsole
 from _pydevd_bundle import pydevd_vars, pydevd_io, pydevd_reload
-
-try:
-    from _pydevd_bundle import pydevd_bytecode_utils
-except ImportError:
-    pydevd_bytecode_utils = None  # i.e.: Not available on Py2.
-
+from _pydevd_bundle import pydevd_bytecode_utils
 from _pydevd_bundle import pydevd_xml
 from _pydevd_bundle import pydevd_vm_type
 import sys
 import traceback
 from _pydevd_bundle.pydevd_utils import quote_smart as quote, compare_object_attrs_key, \
-    notify_about_gevent_if_needed, isinstance_checked, ScopeRequest, getattr_checked
+    notify_about_gevent_if_needed, isinstance_checked, ScopeRequest, getattr_checked, Timer
 from _pydev_bundle import pydev_log, fsnotify
 from _pydev_bundle.pydev_log import exception as pydev_log_exception
 from _pydev_bundle import _pydev_completer
@@ -114,13 +107,7 @@ from _pydev_bundle import _pydev_completer
 from pydevd_tracing import get_exception_traceback_str
 from _pydevd_bundle import pydevd_console
 from _pydev_bundle.pydev_monkey import disable_trace_thread_modules, enable_trace_thread_modules
-try:
-    import cStringIO as StringIO  # may not always be available @UnusedImport
-except:
-    try:
-        import StringIO  # @Reimport @UnresolvedImport
-    except:
-        import io as StringIO
+from io import StringIO
 
 # CMD_XXX constants imported for backward compatibility
 from _pydevd_bundle.pydevd_comm_constants import *  # @UnusedWildImport
@@ -150,7 +137,7 @@ class ReaderThread(PyDBDaemonThread):
 
         self.sock = sock
         self._buffer = b''
-        self.setName("pydevd.Reader")
+        self.name = "pydevd.Reader"
         self.process_net_command = process_net_command
         self.process_net_command_json = PyDevJsonCommandProcessor(self._from_json).process_net_command_json
 
@@ -281,7 +268,7 @@ class ReaderThread(PyDBDaemonThread):
                         self._terminate_on_socket_close()
                     return  # Finished communication.
 
-                # Note: the java backend is always expected to pass utf-8 encoded strings. We now work with unicode
+                # Note: the java backend is always expected to pass utf-8 encoded strings. We now work with str
                 # internally and thus, we may need to convert to the actual encoding where needed (i.e.: filenames
                 # on python 2 may need to be converted to the filesystem encoding).
                 if hasattr(line, 'decode'):
@@ -321,7 +308,7 @@ class FSNotifyThread(PyDBDaemonThread):
     def __init__(self, py_db, api, watch_dirs):
         PyDBDaemonThread.__init__(self, py_db)
         self.api = api
-        self.setName("pydevd.FSNotifyThread")
+        self.name = "pydevd.FSNotifyThread"
         self.watcher = fsnotify.Watcher()
         self.watch_dirs = watch_dirs
 
@@ -357,7 +344,7 @@ class WriterThread(PyDBDaemonThread):
         PyDBDaemonThread.__init__(self, py_db)
         self.sock = sock
         self.__terminate_on_socket_close = terminate_on_socket_close
-        self.setName("pydevd.Writer")
+        self.name = "pydevd.Writer"
         self._cmd_queue = _queue.Queue()
         if pydevd_vm_type.get_vm_type() == 'python':
             self.timeout = 0
@@ -581,9 +568,6 @@ def _send_io_message(py_db, s):
 def internal_reload_code(dbg, seq, module_name, filename):
     try:
         found_module_to_reload = False
-        if IS_PY2 and isinstance(filename, unicode):
-            filename = filename.encode(sys.getfilesystemencoding())
-
         if module_name is not None:
             module_name = module_name
             if module_name not in sys.modules:
@@ -695,7 +679,7 @@ def internal_step_in_thread(py_db, thread_id, cmd_id, set_additional_thread_info
         resume_threads('*', except_thread=thread_to_step)
 
 
-def internal_smart_step_into(py_db, thread_id, offset, set_additional_thread_info):
+def internal_smart_step_into(py_db, thread_id, offset, child_offset, set_additional_thread_info):
     thread_to_step = pydevd_find_thread_by_id(thread_id)
     if thread_to_step:
         info = set_additional_thread_info(thread_to_step)
@@ -703,6 +687,7 @@ def internal_smart_step_into(py_db, thread_id, offset, set_additional_thread_inf
         info.pydev_step_cmd = CMD_SMART_STEP_INTO
         info.pydev_step_stop = None
         info.pydev_smart_parent_offset = int(offset)
+        info.pydev_smart_child_offset = int(child_offset)
         info.pydev_state = STATE_RUN
 
     if py_db.stepping_resumes_all_threads:
@@ -724,11 +709,6 @@ class InternalSetNextStatementThread(InternalThreadCommand):
         self.line = line
         self.seq = seq
 
-        if IS_PY2:
-            if isinstance(func_name, unicode):
-                # On cython with python 2.X it requires an str, not unicode (but on python 3.3 it should be a str, not bytes).
-                func_name = func_name.encode('utf-8')
-
         self.func_name = func_name
 
     def do_it(self, dbg):
@@ -742,6 +722,7 @@ class InternalSetNextStatementThread(InternalThreadCommand):
             info.pydev_func_name = self.func_name
             info.pydev_message = str(self.seq)
             info.pydev_smart_parent_offset = -1
+            info.pydev_smart_child_offset = -1
             info.pydev_state = STATE_RUN
 
 
@@ -778,6 +759,7 @@ def internal_get_variable_json(py_db, request):
                 'name': '<error>',
                 'value': err,
                 'type': '<error>',
+                'variablesReference': 0
             }]
         except:
             err = '<Internal error - unable to get traceback when getting variables>'
@@ -803,23 +785,25 @@ class InternalGetVariable(InternalThreadCommand):
     def do_it(self, dbg):
         ''' Converts request into python variable '''
         try:
-            xml = StringIO.StringIO()
+            xml = StringIO()
             xml.write("<xml>")
-            _typeName, val_dict = pydevd_vars.resolve_compound_variable_fields(
+            type_name, val_dict = pydevd_vars.resolve_compound_variable_fields(
                 dbg, self.thread_id, self.frame_id, self.scope, self.attributes)
             if val_dict is None:
                 val_dict = {}
 
             # assume properly ordered if resolver returns 'OrderedDict'
             # check type as string to support OrderedDict backport for older Python
-            keys = dict_keys(val_dict)
-            if not (_typeName == "OrderedDict" or val_dict.__class__.__name__ == "OrderedDict" or IS_PY36_OR_GREATER):
-                keys.sort(key=compare_object_attrs_key)
+            keys = list(val_dict)
+            if not (type_name == "OrderedDict" or val_dict.__class__.__name__ == "OrderedDict" or IS_PY36_OR_GREATER):
+                keys = sorted(keys, key=compare_object_attrs_key)
 
+            timer = Timer()
             for k in keys:
                 val = val_dict[k]
                 evaluate_full_value = pydevd_xml.should_evaluate_full_value(val)
                 xml.write(pydevd_xml.var_to_xml(val, k, evaluate_full_value=evaluate_full_value))
+                timer.report_if_compute_repr_attr_slow(self.attributes, k, type(val))
 
             xml.write("</xml>")
             cmd = dbg.cmd_factory.make_get_variable_message(self.sequence, xml.getvalue())
@@ -983,13 +967,26 @@ def internal_get_smart_step_into_variants(dbg, seq, thread_id, frame_id, start_l
         xml = "<xml>"
 
         for variant in variants:
-            xml += '<variant name="%s" isVisited="%s" line="%s" offset="%s" callOrder="%s"/>' % (
-                quote(variant.name),
-                str(variant.is_visited).lower(),
-                variant.line,
-                variant.offset,
-                variant.call_order,
-            )
+            if variant.children_variants:
+                for child_variant in variant.children_variants:
+                    # If there are child variants, the current one is just an intermediary, so,
+                    # just create variants for the child (notifying properly about the parent too).
+                    xml += '<variant name="%s" isVisited="%s" line="%s" offset="%s" childOffset="%s" callOrder="%s"/>' % (
+                        quote(child_variant.name),
+                        str(child_variant.is_visited).lower(),
+                        child_variant.line,
+                        variant.offset,
+                        child_variant.offset,
+                        child_variant.call_order,
+                    )
+            else:
+                xml += '<variant name="%s" isVisited="%s" line="%s" offset="%s" childOffset="-1" callOrder="%s"/>' % (
+                    quote(variant.name),
+                    str(variant.is_visited).lower(),
+                    variant.line,
+                    variant.offset,
+                    variant.call_order,
+                )
 
         xml += "</xml>"
         cmd = NetCommand(CMD_GET_SMART_STEP_INTO_VARIANTS, seq, xml)
@@ -1030,18 +1027,36 @@ def internal_get_step_in_targets_json(dbg, seq, thread_id, frame_id, request, se
 
         info = set_additional_thread_info(thread)
         targets = []
+        counter = itertools.count(0)
+        target_id_to_variant = {}
         for variant in variants:
             if not variant.is_visited:
-                if variant.call_order > 1:
-                    targets.append(StepInTarget(id=variant.offset, label='%s (call %s)' % (variant.name, variant.call_order),))
-                else:
-                    targets.append(StepInTarget(id=variant.offset, label=variant.name))
+                if variant.children_variants:
+                    for child_variant in variant.children_variants:
+                        target_id = next(counter)
 
-                if len(targets) >= 15:  # Show at most 15 targets.
-                    break
+                        if child_variant.call_order > 1:
+                            targets.append(StepInTarget(id=target_id, label='%s (call %s)' % (child_variant.name, child_variant.call_order),))
+                        else:
+                            targets.append(StepInTarget(id=target_id, label=child_variant.name))
+                        target_id_to_variant[target_id] = child_variant
+
+                        if len(targets) >= 15:  # Show at most 15 targets.
+                            break
+                else:
+                    target_id = next(counter)
+                    if variant.call_order > 1:
+                        targets.append(StepInTarget(id=target_id, label='%s (call %s)' % (variant.name, variant.call_order),))
+                    else:
+                        targets.append(StepInTarget(id=target_id, label=variant.name))
+                    target_id_to_variant[target_id] = variant
+
+                    if len(targets) >= 15:  # Show at most 15 targets.
+                        break
 
         # Store the last request (may be used afterwards when stepping).
         info.pydev_smart_step_into_variants = tuple(variants)
+        info.target_id_to_smart_step_into_variant = target_id_to_variant
 
         body = StepInTargetsResponseBody(targets=targets)
         response = pydevd_base_schema.build_response(request, kwargs={'body': body})
@@ -1107,7 +1122,6 @@ def _evaluate_response(py_db, request, result, error_message=''):
 _global_frame = None
 
 
-@silence_warnings_decorator
 def internal_evaluate_expression_json(py_db, request, thread_id):
     '''
     :param EvaluateRequest request:
@@ -1123,19 +1137,15 @@ def internal_evaluate_expression_json(py_db, request, thread_id):
     if hasattr(fmt, 'to_dict'):
         fmt = fmt.to_dict()
 
+    ctx = NULL
     if context == 'repl':
-        ctx = pydevd_io.redirect_stream_to_pydb_io_messages_context()
+        if not py_db.is_output_redirected:
+            ctx = pydevd_io.redirect_stream_to_pydb_io_messages_context()
     else:
-        ctx = NULL
+        # If we're not in a repl (watch, hover, ...) don't show warnings.
+        ctx = filter_all_warnings()
 
     with ctx:
-        if IS_PY2 and isinstance(expression, unicode):
-            try:
-                expression.encode('utf-8')
-            except Exception:
-                _evaluate_response(py_db, request, '', error_message='Expression is not valid utf-8.')
-                raise
-
         try_exec = False
         if frame_id is None:
             if _global_frame is None:
@@ -1151,6 +1161,7 @@ def internal_evaluate_expression_json(py_db, request, thread_id):
             eval_result = None
         else:
             frame = py_db.find_frame(thread_id, frame_id)
+
             eval_result = pydevd_vars.evaluate_expression(py_db, frame, expression, is_exec=False)
             is_error = isinstance_checked(eval_result, ExceptionOnEvaluate)
             if is_error:
@@ -1165,41 +1176,24 @@ def internal_evaluate_expression_json(py_db, request, thread_id):
                     _evaluate_response(py_db, request, result=msg, error_message=msg)
                     return
                 else:
-                    try_exec = context == 'repl'
+                    # We only try the exec if the failure we had was due to not being able
+                    # to evaluate the expression.
+                    try:
+                        pydevd_vars.compile_as_eval(expression)
+                    except Exception:
+                        try_exec = context == 'repl'
+                    else:
+                        try_exec = False
+                        if context == 'repl':
+                            # In the repl we should show the exception to the user.
+                            _evaluate_response_return_exception(py_db, request, eval_result.etype, eval_result.result, eval_result.tb)
+                            return
 
         if try_exec:
             try:
                 pydevd_vars.evaluate_expression(py_db, frame, expression, is_exec=True)
             except (Exception, KeyboardInterrupt):
-                try:
-                    exc, exc_type, initial_tb = sys.exc_info()
-                    tb = initial_tb
-
-                    # Show the traceback without pydevd frames.
-                    temp_tb = tb
-                    while temp_tb:
-                        if py_db.get_file_type(temp_tb.tb_frame) == PYDEV_FILE:
-                            tb = temp_tb.tb_next
-                        temp_tb = temp_tb.tb_next
-
-                    if tb is None:
-                        tb = initial_tb
-                    err = ''.join(traceback.format_exception(exc, exc_type, tb))
-
-                    # Make sure we don't keep references to them.
-                    exc = None
-                    exc_type = None
-                    tb = None
-                    temp_tb = None
-                    initial_tb = None
-                except:
-                    err = '<Internal error - unable to get traceback when evaluating expression>'
-                    pydev_log.exception(err)
-
-                # Currently there is an issue in VSC where returning success=false for an
-                # eval request, in repl context, VSC does not show the error response in
-                # the debug console. So return the error message in result as well.
-                _evaluate_response(py_db, request, result=err, error_message=err)
+                _evaluate_response_return_exception(py_db, request, *sys.exc_info())
                 return
             # No result on exec.
             _evaluate_response(py_db, request, result='')
@@ -1212,29 +1206,67 @@ def internal_evaluate_expression_json(py_db, request, thread_id):
             _evaluate_response(py_db, request, result='', error_message='Thread id: %s is not current thread id.' % (thread_id,))
             return
 
-    variable = frame_tracker.obtain_as_variable(expression, eval_result, frame=frame)
+        safe_repr_custom_attrs = {}
+        if context == 'clipboard':
+            safe_repr_custom_attrs = dict(
+                maxstring_outer=2 ** 64,
+                maxstring_inner=2 ** 64,
+                maxother_outer=2 ** 64,
+                maxother_inner=2 ** 64,
+            )
 
-    safe_repr_custom_attrs = {}
-    if context == 'clipboard':
-        safe_repr_custom_attrs = dict(
-            maxstring_outer=2 ** 64,
-            maxstring_inner=2 ** 64,
-            maxother_outer=2 ** 64,
-            maxother_inner=2 ** 64,
-        )
+        if context == 'repl' and eval_result is None:
+            # We don't want "None" to appear when typing in the repl.
+            body = pydevd_schema.EvaluateResponseBody(
+                result=None,
+                variablesReference=0,
+            )
 
-    var_data = variable.get_var_data(fmt=fmt, **safe_repr_custom_attrs)
+        else:
+            variable = frame_tracker.obtain_as_variable(expression, eval_result, frame=frame)
+            var_data = variable.get_var_data(fmt=fmt, **safe_repr_custom_attrs)
 
-    body = pydevd_schema.EvaluateResponseBody(
-        result=var_data['value'],
-        variablesReference=var_data.get('variablesReference', 0),
-        type=var_data.get('type'),
-        presentationHint=var_data.get('presentationHint'),
-        namedVariables=var_data.get('namedVariables'),
-        indexedVariables=var_data.get('indexedVariables'),
-    )
-    variables_response = pydevd_base_schema.build_response(request, kwargs={'body':body})
-    py_db.writer.add_command(NetCommand(CMD_RETURN, 0, variables_response, is_json=True))
+            body = pydevd_schema.EvaluateResponseBody(
+                result=var_data['value'],
+                variablesReference=var_data.get('variablesReference', 0),
+                type=var_data.get('type'),
+                presentationHint=var_data.get('presentationHint'),
+                namedVariables=var_data.get('namedVariables'),
+                indexedVariables=var_data.get('indexedVariables'),
+            )
+        variables_response = pydevd_base_schema.build_response(request, kwargs={'body':body})
+        py_db.writer.add_command(NetCommand(CMD_RETURN, 0, variables_response, is_json=True))
+
+
+def _evaluate_response_return_exception(py_db, request, exc_type, exc, initial_tb):
+    try:
+        tb = initial_tb
+
+        # Show the traceback without pydevd frames.
+        temp_tb = tb
+        while temp_tb:
+            if py_db.get_file_type(temp_tb.tb_frame) == PYDEV_FILE:
+                tb = temp_tb.tb_next
+            temp_tb = temp_tb.tb_next
+
+        if tb is None:
+            tb = initial_tb
+        err = ''.join(traceback.format_exception(exc_type, exc, tb))
+
+        # Make sure we don't keep references to them.
+        exc = None
+        exc_type = None
+        tb = None
+        temp_tb = None
+        initial_tb = None
+    except:
+        err = '<Internal error - unable to get traceback when evaluating expression>'
+        pydev_log.exception(err)
+
+    # Currently there is an issue in VSC where returning success=false for an
+    # eval request, in repl context, VSC does not show the error response in
+    # the debug console. So return the error message in result as well.
+    _evaluate_response(py_db, request, result=err, error_message=err)
 
 
 @silence_warnings_decorator
@@ -1277,19 +1309,6 @@ def internal_set_expression_json(py_db, request, thread_id):
     fmt = arguments.format
     if hasattr(fmt, 'to_dict'):
         fmt = fmt.to_dict()
-
-    if IS_PY2 and isinstance(expression, unicode):
-        try:
-            expression = expression.encode('utf-8')
-        except:
-            _evaluate_response(py_db, request, '', error_message='Expression is not valid utf-8.')
-            raise
-    if IS_PY2 and isinstance(value, unicode):
-        try:
-            value = value.encode('utf-8')
-        except:
-            _evaluate_response(py_db, request, '', error_message='Value is not valid utf-8.')
-            raise
 
     frame = py_db.find_frame(thread_id, frame_id)
     exec_code = '%s = (%s)' % (expression, value)
@@ -1342,12 +1361,6 @@ def internal_get_completions(dbg, seq, thread_id, frame_id, act_tok, line=-1, co
 
             frame = dbg.find_frame(thread_id, frame_id)
             if frame is not None:
-                if IS_PY2:
-                    if not isinstance(act_tok, bytes):
-                        act_tok = act_tok.encode('utf-8')
-                    if not isinstance(qualifier, bytes):
-                        qualifier = qualifier.encode('utf-8')
-
                 completions = _pydev_completer.generate_completions(frame, act_tok)
 
                 # Note that qualifier and start are only actually valid for the
@@ -1773,7 +1786,7 @@ class AbstractGetValueAsyncThread(PyDBDaemonThread):
     @overrides(PyDBDaemonThread._on_run)
     def _on_run(self):
         start = time.time()
-        xml = StringIO.StringIO()
+        xml = StringIO()
         xml.write("<xml>")
         for (var_obj, name) in self.var_objs:
             current_time = time.time()

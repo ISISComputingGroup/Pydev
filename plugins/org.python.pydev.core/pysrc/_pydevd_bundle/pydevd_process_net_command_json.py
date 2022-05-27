@@ -15,10 +15,11 @@ from _pydevd_bundle._debug_adapter.pydevd_schema import (
     ProcessEvent, Scope, ScopesResponseBody, SetExpressionResponseBody,
     SetVariableResponseBody, SourceBreakpoint, SourceResponseBody,
     VariablesResponseBody, SetBreakpointsResponseBody, Response,
-    Capabilities, PydevdAuthorizeRequest, Request, StepInTargetsResponse, StepInTarget,
-    StepInTargetsResponseBody)
+    Capabilities, PydevdAuthorizeRequest, Request,
+    StepInTargetsResponseBody, SetFunctionBreakpointsResponseBody, BreakpointEvent,
+    BreakpointEventBody)
 from _pydevd_bundle.pydevd_api import PyDevdAPI
-from _pydevd_bundle.pydevd_breakpoints import get_exception_class
+from _pydevd_bundle.pydevd_breakpoints import get_exception_class, FunctionBreakpoint
 from _pydevd_bundle.pydevd_comm_constants import (
     CMD_PROCESS_EVENT, CMD_RETURN, CMD_SET_NEXT_STATEMENT, CMD_STEP_INTO,
     CMD_STEP_INTO_MY_CODE, CMD_STEP_OVER, CMD_STEP_OVER_MY_CODE, file_system_encoding,
@@ -222,6 +223,7 @@ class PyDevJsonCommandProcessor(object):
             supportsSetExpression=True,
             supportsTerminateRequest=True,
             supportsClipboardContext=True,
+            supportsFunctionBreakpoints=True,
 
             exceptionBreakpointFilters=[
                 {'filter': 'raised', 'label': 'Raised Exceptions', 'default': False},
@@ -230,7 +232,6 @@ class PyDevJsonCommandProcessor(object):
             ],
 
             # Not supported.
-            supportsFunctionBreakpoints=False,
             supportsStepBack=False,
             supportsRestartFrame=False,
             supportsStepInTargetsRequest=True,
@@ -387,16 +388,24 @@ class PyDevJsonCommandProcessor(object):
         if bool(path_mappings):
             pydevd_file_utils.setup_client_server_paths(path_mappings)
 
+        resolve_symlinks = args.get('resolveSymlinks', None)
+        if resolve_symlinks is not None:
+            pydevd_file_utils.set_resolve_symlinks(resolve_symlinks)
+
+        redirecting = args.get("isOutputRedirected")
         if self._options.redirect_output:
             py_db.enable_output_redirection(True, True)
+            redirecting = True
         else:
             py_db.enable_output_redirection(False, False)
+
+        py_db.is_output_redirected = redirecting
 
         self.api.set_show_return_values(py_db, self._options.show_return_value)
 
         if not self._options.break_system_exit_zero:
             ignore_system_exit_codes = [0, None]
-            if self._options.django_debug:
+            if self._options.django_debug or self._options.flask_debug:
                 ignore_system_exit_codes += [3]
 
             self.api.set_ignore_system_exit_codes(py_db, ignore_system_exit_codes)
@@ -438,7 +447,13 @@ class PyDevJsonCommandProcessor(object):
 
         if not isinstance(watch_dirs, (list, set, tuple)):
             watch_dirs = (watch_dirs,)
-        watch_dirs = set(pydevd_file_utils.get_path_with_real_case(w) for w in watch_dirs)
+        new_watch_dirs = set()
+        for w in watch_dirs:
+            try:
+                new_watch_dirs.add(pydevd_file_utils.get_path_with_real_case(pydevd_file_utils.absolute_path(w)))
+            except Exception:
+                pydev_log.exception('Error adding watch dir: %s', w)
+        watch_dirs = new_watch_dirs
 
         poll_target_time = auto_reload.get('pollingInterval', 1)
         exclude_patterns = auto_reload.get('exclude', ('**/.git/**', '**/__pycache__/**', '**/node_modules/**', '**/.metadata/**', '**/site-packages/**'))
@@ -448,6 +463,8 @@ class PyDevJsonCommandProcessor(object):
 
         if self._options.stop_on_entry and start_reason == 'launch':
             self.api.stop_on_entry()
+
+        self.api.set_gui_event_loop(py_db, self._options.gui_event_loop)
 
     def _send_process_event(self, py_db, start_method):
         argv = getattr(sys, 'argv', [])
@@ -549,8 +566,8 @@ class PyDevJsonCommandProcessor(object):
         if target_id is not None:
             thread = pydevd_find_thread_by_id(thread_id)
             info = set_additional_thread_info(thread)
-            pydev_smart_step_into_variants = info.pydev_smart_step_into_variants
-            if not pydev_smart_step_into_variants:
+            target_id_to_smart_step_into_variant = info.target_id_to_smart_step_into_variant
+            if not target_id_to_smart_step_into_variant:
                 variables_response = pydevd_base_schema.build_response(
                     request,
                     kwargs={
@@ -559,17 +576,20 @@ class PyDevJsonCommandProcessor(object):
                     })
                 return NetCommand(CMD_RETURN, 0, variables_response, is_json=True)
 
-            for variant in pydev_smart_step_into_variants:
-                if variant.offset == target_id:
-                    self.api.request_smart_step_into(py_db, request.seq, thread_id, variant.offset)
-                    break
+            variant = target_id_to_smart_step_into_variant.get(target_id)
+            if variant is not None:
+                parent = variant.parent
+                if parent is not None:
+                    self.api.request_smart_step_into(py_db, request.seq, thread_id, parent.offset, variant.offset)
+                else:
+                    self.api.request_smart_step_into(py_db, request.seq, thread_id, variant.offset, -1)
             else:
                 variables_response = pydevd_base_schema.build_response(
                     request,
                     kwargs={
                         'success': False,
                         'message': 'Unable to find step into target %s. Available targets: %s' % (
-                            target_id, [variant.offset for variant in pydev_smart_step_into_variants])
+                            target_id, target_id_to_smart_step_into_variant)
                     })
                 return NetCommand(CMD_RETURN, 0, variables_response, is_json=True)
 
@@ -668,14 +688,14 @@ class PyDevJsonCommandProcessor(object):
         response = pydevd_base_schema.build_response(request)
         return NetCommand(CMD_RETURN, 0, response, is_json=True)
 
-    def on_setbreakpoints_request(self, py_db, request):
-        '''
-        :param SetBreakpointsRequest request:
-        '''
+    def _verify_launch_or_attach_done(self, request):
         if not self._launch_or_attach_request_done:
             # Note that to validate the breakpoints we need the launch request to be done already
             # (otherwise the filters wouldn't be set for the breakpoint validation).
-            body = SetBreakpointsResponseBody([])
+            if request.command == 'setFunctionBreakpoints':
+                body = SetFunctionBreakpointsResponseBody([])
+            else:
+                body = SetBreakpointsResponseBody([])
             response = pydevd_base_schema.build_response(
                 request,
                 kwargs={
@@ -684,6 +704,48 @@ class PyDevJsonCommandProcessor(object):
                     'message': 'Breakpoints may only be set after the launch request is received.'
                 })
             return NetCommand(CMD_RETURN, 0, response, is_json=True)
+
+    def on_setfunctionbreakpoints_request(self, py_db, request):
+        '''
+        :param SetFunctionBreakpointsRequest request:
+        '''
+        response = self._verify_launch_or_attach_done(request)
+        if response is not None:
+            return response
+
+        arguments = request.arguments  # : :type arguments: SetFunctionBreakpointsArguments
+        function_breakpoints = []
+        suspend_policy = 'ALL'
+
+        # Not currently covered by the DAP.
+        is_logpoint = False
+        expression = None
+
+        breakpoints_set = []
+        for bp in arguments.breakpoints:
+            hit_condition = self._get_hit_condition_expression(bp.get('hitCondition'))
+            condition = bp.get('condition')
+
+            function_breakpoints.append(
+                FunctionBreakpoint(bp['name'], condition, expression, suspend_policy, hit_condition, is_logpoint))
+
+            # Note: always succeeds.
+            breakpoints_set.append(pydevd_schema.Breakpoint(
+                    verified=True, id=self._next_breakpoint_id()).to_dict())
+
+        self.api.set_function_breakpoints(py_db, function_breakpoints)
+
+        body = {'breakpoints': breakpoints_set}
+        set_breakpoints_response = pydevd_base_schema.build_response(request, kwargs={'body': body})
+        return NetCommand(CMD_RETURN, 0, set_breakpoints_response, is_json=True)
+
+    def on_setbreakpoints_request(self, py_db, request):
+        '''
+        :param SetBreakpointsRequest request:
+        '''
+        response = self._verify_launch_or_attach_done(request)
+        if response is not None:
+            return response
 
         arguments = request.arguments  # : :type arguments: SetBreakpointsArguments
         # TODO: Path is optional here it could be source reference.
@@ -707,7 +769,7 @@ class PyDevJsonCommandProcessor(object):
             source_breakpoint = SourceBreakpoint(**source_breakpoint)
             line = source_breakpoint.line
             condition = source_breakpoint.condition
-            breakpoint_id = line
+            breakpoint_id = self._next_breakpoint_id()
 
             hit_condition = self._get_hit_condition_expression(source_breakpoint.hitCondition)
             log_message = source_breakpoint.logMessage
@@ -718,36 +780,56 @@ class PyDevJsonCommandProcessor(object):
                 is_logpoint = True
                 expression = convert_dap_log_message_to_expression(log_message)
 
+            on_changed_breakpoint_state = partial(self._on_changed_breakpoint_state, py_db, arguments.source)
             result = self.api.add_breakpoint(
-                py_db, filename, btype, breakpoint_id, line, condition, func_name, expression, suspend_policy, hit_condition, is_logpoint, adjust_line=True)
-            error_code = result.error_code
+                py_db, filename, btype, breakpoint_id, line, condition, func_name, expression,
+                suspend_policy, hit_condition, is_logpoint, adjust_line=True, on_changed_breakpoint_state=on_changed_breakpoint_state)
 
-            if error_code:
-                if error_code == self.api.ADD_BREAKPOINT_FILE_NOT_FOUND:
-                    error_msg = 'Breakpoint in file that does not exist.'
-
-                elif error_code == self.api.ADD_BREAKPOINT_FILE_EXCLUDED_BY_FILTERS:
-                    error_msg = 'Breakpoint in file excluded by filters.'
-                    if py_db.get_use_libraries_filter():
-                        error_msg += ('\nNote: may be excluded because of "justMyCode" option (default == true).'
-                                      'Try setting \"justMyCode\": false in the debug configuration (e.g., launch.json).\n')
-
-                else:
-                    # Shouldn't get here.
-                    error_msg = 'Breakpoint not validated (reason unknown -- please report as bug).'
-
-                breakpoints_set.append(pydevd_schema.Breakpoint(
-                    verified=False, line=result.translated_line, message=error_msg, source=arguments.source).to_dict())
-            else:
-                # Note that the id is made up (the id for pydevd is unique only within a file, so, the
-                # line is used for it).
-                # Also, the id is currently not used afterwards, so, we don't even keep a mapping.
-                breakpoints_set.append(pydevd_schema.Breakpoint(
-                    verified=True, id=self._next_breakpoint_id(), line=result.translated_line, source=arguments.source).to_dict())
+            bp = self._create_breakpoint_from_add_breakpoint_result(py_db, arguments.source, breakpoint_id, result)
+            breakpoints_set.append(bp)
 
         body = {'breakpoints': breakpoints_set}
         set_breakpoints_response = pydevd_base_schema.build_response(request, kwargs={'body': body})
         return NetCommand(CMD_RETURN, 0, set_breakpoints_response, is_json=True)
+
+    def _on_changed_breakpoint_state(self, py_db, source, breakpoint_id, result):
+        bp = self._create_breakpoint_from_add_breakpoint_result(py_db, source, breakpoint_id, result)
+        body = BreakpointEventBody(
+            reason='changed',
+            breakpoint=bp,
+        )
+        event = BreakpointEvent(body)
+        event_id = 0  # Actually ignored in this case
+        py_db.writer.add_command(NetCommand(event_id, 0, event, is_json=True))
+
+    def _create_breakpoint_from_add_breakpoint_result(self, py_db, source, breakpoint_id, result):
+        error_code = result.error_code
+
+        if error_code:
+            if error_code == self.api.ADD_BREAKPOINT_FILE_NOT_FOUND:
+                error_msg = 'Breakpoint in file that does not exist.'
+
+            elif error_code == self.api.ADD_BREAKPOINT_FILE_EXCLUDED_BY_FILTERS:
+                error_msg = 'Breakpoint in file excluded by filters.'
+                if py_db.get_use_libraries_filter():
+                    error_msg += ('\nNote: may be excluded because of "justMyCode" option (default == true).'
+                                  'Try setting \"justMyCode\": false in the debug configuration (e.g., launch.json).\n')
+
+            elif error_code == self.api.ADD_BREAKPOINT_LAZY_VALIDATION:
+                error_msg = 'Waiting for code to be loaded to verify breakpoint.'
+
+            elif error_code == self.api.ADD_BREAKPOINT_INVALID_LINE:
+                error_msg = 'Breakpoint added to invalid line.'
+
+            else:
+                # Shouldn't get here.
+                error_msg = 'Breakpoint not validated (reason unknown -- please report as bug).'
+
+            return pydevd_schema.Breakpoint(
+                verified=False, id=breakpoint_id, line=result.translated_line, message=error_msg, source=source).to_dict()
+        else:
+            return pydevd_schema.Breakpoint(
+                verified=True, id=breakpoint_id, line=result.translated_line, source=source).to_dict()
 
     def on_setexceptionbreakpoints_request(self, py_db, request):
         '''

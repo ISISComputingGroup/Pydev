@@ -15,7 +15,9 @@ import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.StringReader;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -46,8 +48,10 @@ import org.python.pydev.ast.codecompletion.revisited.SystemModulesManager;
 import org.python.pydev.ast.runners.SimpleRunner;
 import org.python.pydev.core.CorePlugin;
 import org.python.pydev.core.ExtensionHelper;
+import org.python.pydev.core.IGrammarVersionProvider;
 import org.python.pydev.core.IInterpreterInfo;
 import org.python.pydev.core.IInterpreterManager;
+import org.python.pydev.core.IModuleRequestState;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.ISystemModulesManager;
 import org.python.pydev.core.PropertiesHelper;
@@ -55,8 +59,10 @@ import org.python.pydev.core.docutils.PyStringUtils;
 import org.python.pydev.core.interpreters.IInterpreterNewCustomEntries;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.plugin.nature.PythonNature;
+import org.python.pydev.plugin.nature.SystemPythonNature;
 import org.python.pydev.shared_core.SharedCorePlugin;
 import org.python.pydev.shared_core.callbacks.ICallback;
+import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.process.ProcessUtils;
 import org.python.pydev.shared_core.progress.CancelException;
 import org.python.pydev.shared_core.string.FastStringBuffer;
@@ -107,6 +113,7 @@ public class InterpreterInfo implements IInterpreterInfo {
      */
     private String[] builtinsCache;
     private Map<String, File> predefinedBuiltinsCache;
+    private Map<String, File> typeshedCache;
 
     /**
      * module management for the system is always binded to an interpreter (binded in this class)
@@ -154,7 +161,7 @@ public class InterpreterInfo implements IInterpreterInfo {
      * within Eclipse, for test the stringVariableManagerForTests can be set to
      * an appropriate mock object
      */
-    /*default*/IStringVariableManager stringVariableManagerForTests;
+    public IStringVariableManager stringVariableManagerForTests;
 
     private IStringVariableManager getStringVariableManager() {
         if (SharedCorePlugin.inTestMode()) {
@@ -181,11 +188,11 @@ public class InterpreterInfo implements IInterpreterInfo {
         libs.addAll(libs0);
     }
 
-    /*default*/ InterpreterInfo(String version, String exe, Collection<String> libs0, Collection<String> dlls) {
+    public InterpreterInfo(String version, String exe, Collection<String> libs0, Collection<String> dlls) {
         this(version, exe, libs0);
     }
 
-    /*default*/ InterpreterInfo(String version, String exe, List<String> libs0, List<String> dlls,
+    public InterpreterInfo(String version, String exe, List<String> libs0, List<String> dlls,
             List<String> forced) {
         this(version, exe, libs0, dlls, forced, null, null);
     }
@@ -193,7 +200,7 @@ public class InterpreterInfo implements IInterpreterInfo {
     /**
      * Note: dlls is no longer used!
      */
-    /*default*/ InterpreterInfo(String version, String exe, List<String> libs0, List<String> dlls, List<String> forced,
+    public InterpreterInfo(String version, String exe, List<String> libs0, List<String> dlls, List<String> forced,
             List<String> envVars, Properties stringSubstitution) {
         this(version, exe, libs0, dlls);
         for (String s : forced) {
@@ -1702,7 +1709,8 @@ public class InterpreterInfo implements IInterpreterInfo {
         return ret;
     }
 
-    private Map<String, String> obtainCondaEnv(File condaPrefix) throws IOException, CoreException {
+    public Map<String, String> obtainCondaEnv(File condaPrefix)
+            throws Exception {
         Map<String, String> condaEnv = new HashMap<String, String>();
         String[] cmdLine;
         File relativePath;
@@ -1719,18 +1727,31 @@ public class InterpreterInfo implements IInterpreterInfo {
         // Note: we must start from the default env and not based on a project nature (otherwise
         // variables in one project could interfere with another project).
         Map<String, String> initialEnv = SimpleRunner.getDefaultSystemEnv(this.getModulesManager().getNature());
+        File condaExec = PyDevCondaPreferences.findCondaExecutable(this);
+        File condaBinDir = condaExec.getParentFile(); // in Windows Systems, this directory is called Scripts
+        File condaActivation = getCondaActivationFile(condaBinDir);
+        if (!condaActivation.exists()) {
+            Log.log("Could not find Conda activate file: " + condaActivation);
+            return initialEnv;
+        }
 
         initialEnv.put("__PYDEV_CONDA_PREFIX__", condaPrefix.toString());
         initialEnv.put("__PYDEV_CONDA_DEFAULT_ENV__", condaPrefix.getName());
+        initialEnv.put("__PYDEV_CONDA_ACTIVATION__", condaActivation.getAbsolutePath()); // in subshell scripts we need to activate conda before calling any conda command.
+
         Process process = SimpleRunner.createProcess(cmdLine, createEnvWithMap(initialEnv),
                 relativePath.getParentFile());
         Tuple<String, String> output = SimpleRunner.getProcessOutput(process,
                 ProcessUtils.getArgumentsAsStr(cmdLine), null, null);
+        if (output.o2 != null && !output.o2.isEmpty()) {
+            Log.logInfo("stderr when loading conda env: " + output.o2);
+        }
         for (String line : StringUtils.splitInLines(output.o1, false)) {
             if (!line.trim().isEmpty()) {
                 Tuple<String, String> split = StringUtils.splitOnFirst(line, '=');
                 if (split.o1.equals("__PYDEV_CONDA_PREFIX__")
                         || split.o1.equals("__PYDEV_CONDA_DEFAULT_ENV__")
+                        || split.o1.equals("__PYDEV_CONDA_ACTIVATION__")
                         || split.o1.equals("_")) {
                     continue;
                 }
@@ -1744,6 +1765,14 @@ public class InterpreterInfo implements IInterpreterInfo {
         Map<String, String> map = new HashMap<>();
         fillMapWithEnv(env, map, null, null);
         return map;
+    }
+
+    private static File getCondaActivationFile(File condaBinDir) throws Exception {
+        if (PlatformUtils.isWindowsPlatform()) {
+            return new File(condaBinDir, "activate.bat");
+        } else {
+            return new File(condaBinDir, "activate");
+        }
     }
 
     public static String[] createEnvWithMap(Map<String, String> hashMap) {
@@ -1920,9 +1949,10 @@ public class InterpreterInfo implements IInterpreterInfo {
 
     /**
      * May return null if it doesn't exist.
+     * @param moduleRequest
      * @return the file that matches the passed module name with the predefined builtins.
      */
-    public File getPredefinedModule(String moduleName) {
+    public File getPredefinedModule(String moduleName, IModuleRequestState moduleRequest) {
         if (this.predefinedBuiltinsCache == null) {
             this.predefinedBuiltinsCache = new HashMap<String, File>();
             for (String s : this.getPredefinedCompletionsPath()) {
@@ -1948,7 +1978,56 @@ public class InterpreterInfo implements IInterpreterInfo {
             }
         }
 
-        return this.predefinedBuiltinsCache.get(moduleName);
+        if (this.typeshedCache == null && moduleRequest.getAcceptTypeshed()) {
+            this.typeshedCache = new HashMap<String, File>();
+            try {
+                File typeshedPath = CorePlugin.getTypeshedPath();
+                File f = new File(typeshedPath, "stdlib");
+                if (this.getGrammarVersion() <= IGrammarVersionProvider.LATEST_GRAMMAR_PY2_VERSION) {
+                    f = new File(f, "@python2");
+                }
+                if (f.isDirectory()) {
+                    fillTypeshedFromDirInfo(f, "");
+                }
+            } catch (CoreException e) {
+                Log.log(e);
+            }
+        }
+
+        File ret = this.predefinedBuiltinsCache.get(moduleName);
+        if (ret == null && moduleRequest.getAcceptTypeshed()) {
+            ret = this.typeshedCache.get(moduleName);
+        }
+        return ret;
+    }
+
+    private void fillTypeshedFromDirInfo(File f, String basename) {
+        java.nio.file.Path path = Paths.get(f.toURI());
+        try (DirectoryStream<java.nio.file.Path> newDirectoryStream = Files.newDirectoryStream(path)) {
+            Iterator<java.nio.file.Path> it = newDirectoryStream.iterator();
+            while (it.hasNext()) {
+                java.nio.file.Path path2 = it.next();
+                File file2 = path2.toFile();
+                String fName = file2.getName();
+                if (file2.isDirectory()) {
+                    String dirname = fName;
+                    if (!dirname.contains("@")) {
+                        fillTypeshedFromDirInfo(file2,
+                                basename.isEmpty() ? dirname + "." : basename + dirname + ".");
+                    }
+                } else {
+                    if (fName.endsWith(".pyi")) {
+                        String modName = fName.substring(0, fName.length() - (".pyi".length()));
+                        if (modName.equals("typing") || modName.equals("builtins") || modName.equals("__builtin__")) {
+                            continue;
+                        }
+                        this.typeshedCache.put(basename + modName, file2);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            Log.log(e);
+        }
     }
 
     public void removePredefinedCompletionPath(String item) {
@@ -2029,11 +2108,11 @@ public class InterpreterInfo implements IInterpreterInfo {
     public static File searchExecutable(File pythonContainerDir, String executable) {
         if (PlatformUtils.isWindowsPlatform()) {
             File target2 = new File(pythonContainerDir, executable + ".exe");
-            if (target2.exists()) {
+            if (FileUtils.enhancedIsFile(target2)) {
                 return target2;
             }
             target2 = new File(pythonContainerDir, executable + ".bat");
-            if (target2.exists()) {
+            if (FileUtils.enhancedIsFile(target2)) {
                 return target2;
             }
         } else {
@@ -2056,6 +2135,7 @@ public class InterpreterInfo implements IInterpreterInfo {
         this.activateCondaEnv = b;
     }
 
+    @Override
     public File getCondaPrefix() {
         String executableOrJar = getExecutableOrJar();
         File parentFile = new File(executableOrJar).getParentFile();
@@ -2077,4 +2157,34 @@ public class InterpreterInfo implements IInterpreterInfo {
     public String getPipenvTargetDir() {
         return this.pipenvTargetDir;
     }
+
+    private String userSitePackages;
+
+    @Override
+    public String obtainUserSitePackages(IInterpreterManager interpreterManager) {
+        if (userSitePackages == null) {
+            SimpleRunner simpleRunner = new SimpleRunner();
+            Tuple<String, String> output = simpleRunner.runAndGetOutput(
+                    new String[] { executableOrJar, "-m", "site",
+                            PlatformUtils.isWindowsPlatform() ? "--user-site" : "--user-base" },
+                    new File(executableOrJar).getParentFile(),
+                    new SystemPythonNature(interpreterManager, this), null, "utf-8");
+            userSitePackages = output.o1.trim();
+        }
+        return userSitePackages;
+    }
+
+    private String computedPipEnvLocation;
+
+    @Override
+    public String getComputedPipEnvLocation() {
+        return computedPipEnvLocation;
+    }
+
+    @Override
+    public void setComputedPipEnvLocation(String location) {
+        computedPipEnvLocation = location;
+
+    }
+
 }

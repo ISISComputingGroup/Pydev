@@ -29,15 +29,18 @@ import org.python.pydev.ast.codecompletion.revisited.PyPublicTreeMap;
 import org.python.pydev.ast.codecompletion.revisited.PythonPathHelper;
 import org.python.pydev.ast.codecompletion.revisited.modules.IAbstractJavaClassModule;
 import org.python.pydev.ast.interpreter_managers.InterpreterInfo;
+import org.python.pydev.core.BaseModuleRequest;
 import org.python.pydev.core.FastBufferedReader;
 import org.python.pydev.core.IInfo;
 import org.python.pydev.core.IInterpreterManager;
 import org.python.pydev.core.IModule;
+import org.python.pydev.core.IModuleRequestState;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.IToken;
 import org.python.pydev.core.IterTokenEntry;
 import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.core.ModulesKey;
+import org.python.pydev.core.ModulesKeyForFolder;
 import org.python.pydev.core.ObjectsInternPool;
 import org.python.pydev.core.ObjectsInternPool.ObjectsPoolMap;
 import org.python.pydev.core.TokensList;
@@ -230,6 +233,7 @@ public abstract class AbstractAdditionalDependencyInfo extends AbstractAdditiona
             FastStringBuffer buffer = new FastStringBuffer();
             int currI = 0;
             int total = newKeys.size();
+            IModuleRequestState moduleRequest = new BaseModuleRequest(true);
             for (ModulesKey newKey : newKeys) {
                 currI += 1;
                 if (monitor.isCanceled()) {
@@ -254,7 +258,7 @@ public abstract class AbstractAdditionalDependencyInfo extends AbstractAdditiona
                                 .append(" (builtin module): ").append(newKey.name);
                         monitor.setTaskName(buffer.toString());
                         IModule builtinModule = info.getModulesManager().getModule(newKey.name,
-                                info.getModulesManager().getNature(), true);
+                                info.getModulesManager().getNature(), true, moduleRequest);
                         if (builtinModule != null) {
                             if (builtinModule instanceof IAbstractJavaClassModule) {
                                 if (newKey.file != null) {
@@ -342,6 +346,17 @@ public abstract class AbstractAdditionalDependencyInfo extends AbstractAdditiona
             Log.log(e);
         }
         return addAstInfo;
+    }
+
+    @Override
+    protected void addModulesKeyForFolderToIndex(ModulesKey key, boolean generateDelta) {
+        synchronized (lock) {
+            CompleteIndexKey completeIndexKey = new CompleteIndexKey(key);
+            if (key.file != null) {
+                completeIndexKey.lastModified = FileUtils.lastModified(key.file);
+            }
+            completeIndex.add(completeIndexKey);
+        }
     }
 
     @Override

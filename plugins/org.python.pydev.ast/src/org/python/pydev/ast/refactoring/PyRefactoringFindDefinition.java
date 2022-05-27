@@ -58,7 +58,7 @@ public class PyRefactoringFindDefinition {
      * @throws CompletionRecursionException
      * @throws BadLocationException
      */
-    public static String[] findActualDefinition(RefactoringRequest request, CompletionCache completionCache,
+    public static String[] findActualDefinition(RefactoringRequest request, ICompletionState completionCache,
             List<IDefinition> selected) throws CompletionRecursionException, BadLocationException {
         //ok, let's find the definition.
         request.getMonitor().beginTask("Find actual definition", 5);
@@ -72,7 +72,7 @@ public class PyRefactoringFindDefinition {
             }
             String modName = request.moduleName;
             request.communicateWork("Module name found:" + modName);
-            tokenAndQual = PySelection.getActivationTokenAndQual(request.getDoc(),
+            tokenAndQual = PySelection.getActivationTokenAndQualifier(request.getDoc(),
                     request.ps.getAbsoluteCursorOffset(), true);
             String tok = tokenAndQual[0] + tokenAndQual[1];
             //2. check findDefinition (SourceModule)
@@ -81,8 +81,8 @@ public class PyRefactoringFindDefinition {
                 int beginCol = request.getBeginCol() + 1;
                 IPythonNature pythonNature = request.nature;
 
-                PyRefactoringFindDefinition.findActualDefinition(request.getMonitor(), mod, tok, selected, beginLine,
-                        beginCol, pythonNature, completionCache);
+                PyRefactoringFindDefinition.findActualDefinition(request.getMonitor(), request.acceptTypeshed, mod, tok,
+                        selected, beginLine, beginCol, pythonNature, completionCache);
             } catch (OperationCanceledException e) {
                 throw e;
             } catch (CompletionRecursionException e) {
@@ -157,10 +157,11 @@ public class PyRefactoringFindDefinition {
         return mod;
     }
 
-    public static void findActualDefinition(IProgressMonitor monitor, IModule mod, String tok,
+    public static void findActualDefinition(IProgressMonitor monitor, boolean acceptTypeshed, IModule mod, String tok,
             List<IDefinition> selected, int beginLine, int beginCol, IPythonNature pythonNature,
             ICompletionCache completionCache) throws CompletionRecursionException, Exception {
-        findActualDefinition(monitor, mod, tok, selected, beginLine, beginCol, pythonNature, completionCache, true);
+        findActualDefinition(monitor, acceptTypeshed, mod, tok, selected, beginLine, beginCol, pythonNature,
+                completionCache, true);
     }
 
     /**
@@ -183,8 +184,8 @@ public class PyRefactoringFindDefinition {
      *
      * @throws Exception
      */
-    public static List<IDefinition> findActualDefinition(IProgressMonitor monitor, IModule mod, String tok,
-            List<IDefinition> foundDefinitions, int beginLine, int beginCol, IPythonNature pythonNature,
+    public static List<IDefinition> findActualDefinition(IProgressMonitor monitor, boolean acceptTypeshed, IModule mod,
+            String tok, List<IDefinition> foundDefinitions, int beginLine, int beginCol, IPythonNature pythonNature,
             ICompletionCache completionCache, boolean searchForMethodParameterFromParticipants)
             throws Exception, CompletionRecursionException {
 
@@ -193,6 +194,7 @@ public class PyRefactoringFindDefinition {
         }
         ICompletionState completionState = CompletionStateFactory.getEmptyCompletionState(tok, pythonNature,
                 beginLine - 1, beginCol - 1, completionCache);
+        completionState.setAcceptTypeshed(acceptTypeshed);
         IDefinition[] definitions = mod.findDefinition(completionState, beginLine, beginCol, pythonNature);
 
         if (monitor != null) {
@@ -210,8 +212,7 @@ public class PyRefactoringFindDefinition {
             if (definition instanceof Definition) {
                 Definition d = (Definition) definition;
                 doAdd = !findActualTokenFromImportFromDefinition(pythonNature, tok, foundDefinitions, d,
-                        completionCache,
-                        searchForMethodParameterFromParticipants);
+                        completionState, searchForMethodParameterFromParticipants);
             }
             if (monitor != null && monitor.isCanceled()) {
                 return foundDefinitions;
@@ -238,7 +239,7 @@ public class PyRefactoringFindDefinition {
      * @throws Exception
      */
     private static boolean findActualTokenFromImportFromDefinition(IPythonNature nature, String tok,
-            List<IDefinition> selected, Definition d, ICompletionCache completionCache,
+            List<IDefinition> selected, Definition d, ICompletionState completionCache,
             boolean searchForMethodParameterFromParticipants) throws Exception {
         boolean didFindNewDef = false;
 
@@ -266,26 +267,15 @@ public class PyRefactoringFindDefinition {
         }
 
         while (d.ast instanceof ImportFrom) {
-            Tuple3<String, Integer, Integer> t1 = getTupFromDefinition(d);
-            if (t1 == null) {
-                break;
-            }
-            whereWePassed.add(t1);
+            IDefinition[] found = followDefinition(d, whereWePassed, tok, nature, completionCache);
 
-            Definition[] found = (Definition[]) d.module
-                    .findDefinition(CompletionStateFactory.getEmptyCompletionState(tok, nature, completionCache),
-                            d.line, d.col, nature);
             if (found != null && found.length == 1) {
-                Tuple3<String, Integer, Integer> tupFromDefinition = getTupFromDefinition(found[0]);
+                Tuple3<String, Integer, Integer> tupFromDefinition = getTupFromDefinition((Definition) found[0]);
                 if (tupFromDefinition == null) {
                     break;
                 }
-                if (!whereWePassed.contains(tupFromDefinition)) { //avoid recursions
-                    didFindNewDef = true;
-                    d = found[0];
-                } else {
-                    break;
-                }
+                didFindNewDef = true;
+                d = (Definition) found[0];
             } else {
                 break;
             }
@@ -298,10 +288,29 @@ public class PyRefactoringFindDefinition {
         return didFindNewDef;
     }
 
+    public static IDefinition[] followDefinition(Definition d, Set<Tuple3<String, Integer, Integer>> whereWePassed,
+            String tok, IPythonNature nature, ICompletionCache completionCache) throws Exception {
+        Tuple3<String, Integer, Integer> t1 = getTupFromDefinition(d);
+        if (t1 == null) {
+            return null;
+        }
+        if (whereWePassed.contains(t1)) {
+            // We've already seen this (don't recurse).
+            return null;
+        }
+        whereWePassed.add(t1);
+
+        IDefinition[] found = d.module
+                .findDefinition(CompletionStateFactory.getEmptyCompletionState(tok, nature, completionCache),
+                        d.line, d.col, nature);
+        return found;
+
+    }
+
     /**
      * @return a tuple with the absolute path to the definition, its line and col.
      */
-    private static Tuple3<String, Integer, Integer> getTupFromDefinition(Definition d) {
+    public static Tuple3<String, Integer, Integer> getTupFromDefinition(Definition d) {
         if (d == null) {
             return null;
         }

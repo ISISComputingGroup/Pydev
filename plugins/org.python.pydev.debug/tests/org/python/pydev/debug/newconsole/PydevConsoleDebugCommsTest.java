@@ -76,7 +76,7 @@ public class PydevConsoleDebugCommsTest extends TestCase {
         }
         homeDir = homeDir.getAbsoluteFile();
         homeDir.mkdir();
-        String[] cmdarray = new String[] { TestDependent.PYTHON_EXE, consoleFile, String.valueOf(port),
+        String[] cmdarray = new String[] { TestDependent.PYTHON2_EXE, consoleFile, String.valueOf(port),
                 String.valueOf(clientPort) };
 
         Map<String, String> env = new TreeMap<String, String>(System.getenv()); //SystemRoot/PATH Needed on windows boxes (so, start from default env).
@@ -139,6 +139,10 @@ public class PydevConsoleDebugCommsTest extends TestCase {
     }
 
     private class DummyDebugTarget extends AbstractDebugTarget {
+
+        public DummyDebugTarget() {
+            super(null);
+        }
 
         @Override
         public void processCommand(String sCmdCode, String sSeqCode, String payload) {
