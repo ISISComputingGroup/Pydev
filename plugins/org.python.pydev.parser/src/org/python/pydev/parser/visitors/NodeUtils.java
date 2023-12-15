@@ -447,10 +447,10 @@ public final class NodeUtils {
 
         if (node instanceof BinOp) {
             BinOp binOp = (BinOp) node;
-            if (binOp.left instanceof Str && binOp.op == BinOp.Mod) {
-                //It's something as 'aaa' % (1,2), so, we know it's a string.
-                return getRepresentationString(node, true);
-            }
+            // We consider that the path is kept in a bin op.
+            // Examples: 'a %s b' % ('foo',)
+            // Examples: Path('a') / 'b'
+            return getFullRepresentationString(binOp.left, fullOnSubscriptOrCall);
         }
 
         return getRepresentationString(node, true);
@@ -2130,6 +2130,10 @@ public final class NodeUtils {
                 str = prettyPrinterV2.print(astToPrint);
             } catch (IOException e) {
                 Log.log(e);
+                str = "Error generating ast: " + e.getMessage();
+            } catch (Exception e) {
+                Log.log(e);
+                str = "Error generating ast: " + e.getMessage();
             }
         }
         return str;
@@ -2216,7 +2220,15 @@ public final class NodeUtils {
                 && "Optional".equals(((Name) ((Subscript) node).value).id)
                 && ((Subscript) node).slice instanceof Index
                 && ((Index) ((Subscript) node).slice).value != null) {
-            return ((Index) ((Subscript) node).slice).value;
+            final exprType value = ((Index) ((Subscript) node).slice).value;
+            if (value instanceof Str) {
+                // If it's a Str, convert it to a name load
+                // The case is that we have something as: Optional['C'],
+                // where 'C' is a string for a forward definition.
+                Str str = (Str) value;
+                return new Name(str.s, Name.Load, false);
+            }
+            return value;
         }
         return node;
     }

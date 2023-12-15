@@ -2,11 +2,11 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Shared Ui Plug-in
 Bundle-SymbolicName: org.python.pydev.shared_ui;singleton:=true
-Bundle-Version: 10.1.3.qualifier
+Bundle-Version: 11.0.3.qualifier
 Bundle-ClassPath: shared_ui.jar
 Bundle-Activator: org.python.pydev.shared_ui.SharedUiPlugin
 Eclipse-BundleShape: dir
-Require-Bundle: org.python.pydev.shared_core;bundle-version="[10.1.3,10.1.4)",
+Require-Bundle: org.python.pydev.shared_core;bundle-version="[11.0.3,11.0.4)",
  org.eclipse.ui,
  org.eclipse.core.runtime,
  org.eclipse.ui.workbench.texteditor,
@@ -52,5 +52,5 @@ Export-Package: org.python.pydev.overview_ruler,
  org.python.pydev.shared_ui.utils,
  org.python.pydev.shared_ui.word_boundaries
 Bundle-Vendor: Brainwy Software Ltda
-Bundle-RequiredExecutionEnvironment: JavaSE-11
+Bundle-RequiredExecutionEnvironment: JavaSE-17
 Automatic-Module-Name: org.python.pydev.shared.ui

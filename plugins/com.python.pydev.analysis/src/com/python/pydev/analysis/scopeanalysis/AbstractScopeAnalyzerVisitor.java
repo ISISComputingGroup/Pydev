@@ -69,7 +69,9 @@ import org.python.pydev.parser.jython.ast.comprehensionType;
 import org.python.pydev.parser.jython.ast.decoratorsType;
 import org.python.pydev.parser.jython.ast.exprType;
 import org.python.pydev.parser.visitors.NodeUtils;
+import org.python.pydev.shared_core.model.ISimpleNode;
 import org.python.pydev.shared_core.string.FullRepIterable;
+import org.python.pydev.shared_core.structure.FastStack;
 import org.python.pydev.shared_core.structure.StringToIntCounterSmallSet;
 
 import com.python.pydev.analysis.visitors.Found;
@@ -136,6 +138,8 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
     private final LocalScope currentLocalScope;
 
     private final Set<String> builtinTokens = new HashSet<String>();
+
+    protected int isInMatchScope = 0;
 
     public AbstractScopeAnalyzerVisitor(IPythonNature nature, String moduleName, IModule current, IDocument document,
             IProgressMonitor monitor) {
@@ -295,7 +299,7 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
      * used so that the token is added to the names to ignore...
      */
     protected void addToNamesToIgnore(SimpleNode node, boolean finishClassScope, boolean checkBuiltins) {
-        SourceToken token = AbstractVisitor.makeToken(node, "", nature, this.current);
+        final SourceToken token = AbstractVisitor.makeToken(node, "", nature, this.current);
 
         if (checkBuiltins) {
             if (checkCurrentScopeForAssignmentsToBuiltins()) {
@@ -307,9 +311,9 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
             }
         }
 
-        ScopeItems currScopeItems = scope.getCurrScopeItems();
+        final ScopeItems currScopeItems = scope.getCurrScopeItems();
 
-        Found found = new Found(token, token, scope.getCurrScopeId(), scope.getCurrScopeItems());
+        final Found found = new Found(token, token, scope.getCurrScopeId(), scope.getCurrScopeItems());
         org.python.pydev.shared_core.structure.Tuple<IToken, Found> tup = new org.python.pydev.shared_core.structure.Tuple<IToken, Found>(
                 token, found);
         addToNamesToIgnore(token, currScopeItems, tup);
@@ -320,21 +324,25 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
             Found n = it.next();
 
             GenAndTok single = n.getSingle();
-            int foundScopeType = single.scopeFound.getScopeType();
+            final ScopeItems scopeFound = single.scopeFound;
+            final int foundScopeType = scopeFound.getScopeType();
+            final int globalClassOrMethodScopeType = scopeFound.globalClassOrMethodScopeType;
             //ok, if we are in a scope method, we may not get things that were defined in a class scope.
-            if (((foundScopeType & Scope.ACCEPTED_METHOD_AND_LAMBDA) != 0)
+            if (((globalClassOrMethodScopeType & Scope.ACCEPTED_METHOD_AND_LAMBDA) != 0)
                     && scope.getCurrScopeItems().getScopeType() == Scope.SCOPE_TYPE_CLASS) {
                 continue;
             }
-            IToken tok = single.tok;
-            String firstPart = FullRepIterable.getFirstPart(tok.getRepresentation());
+            final IToken tok = single.tok;
+            final String firstPart = FullRepIterable.getFirstPart(tok.getRepresentation());
 
             if (firstPart.equals(token.getRepresentation())) {
                 //found match in names to ignore...
 
-                if (finishClassScope && scope.getCurrScopeId() < single.scopeFound.getScopeId()
-                        && (!futureAnnotationsImported && foundScopeType == Scope.SCOPE_TYPE_CLASS ||
-                                (!futureAnnotationsImported && foundScopeType == Scope.SCOPE_TYPE_ANNOTATION))) {
+                if (finishClassScope && scope.getCurrScopeId() < scopeFound.getScopeId()
+                        && !(foundScopeType == Scope.SCOPE_TYPE_ANNOTATION_STR)
+                        && (!futureAnnotationsImported && (globalClassOrMethodScopeType == Scope.SCOPE_TYPE_CLASS
+                                || foundScopeType == Scope.SCOPE_TYPE_ANNOTATION)
+                                && (globalClassOrMethodScopeType & Scope.ACCEPTED_METHOD_AND_LAMBDA) == 0)) {
                     it.remove();
                     onAddUndefinedMessage(tok, found);
                 } else {
@@ -407,7 +415,11 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
         if (args.annotation != null) {
             for (exprType expr : args.annotation) {
                 if (expr != null) {
-                    startScope(Scope.SCOPE_TYPE_ANNOTATION, expr);
+                    int scopeType = Scope.SCOPE_TYPE_ANNOTATION;
+                    if (futureAnnotationsImported) {
+                        scopeType = Scope.SCOPE_TYPE_ANNOTATION_STR;
+                    }
+                    startScope(scopeType, expr);
                     expr.accept(visitor);
                     endScope(expr);
                 }
@@ -416,7 +428,13 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
 
         //visit the return
         if (node.returns != null) {
+            int scopeType = Scope.SCOPE_TYPE_ANNOTATION;
+            if (futureAnnotationsImported) {
+                scopeType = Scope.SCOPE_TYPE_ANNOTATION_STR;
+            }
+            startScope(scopeType, node.returns);
             node.returns.accept(visitor);
+            endScope(node.returns);
         }
 
         //then the decorators (no, still not in method scope)
@@ -548,7 +566,7 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
     @Override
     public Object visitNameTok(NameTok nameTok) throws Exception {
         unhandled_node(nameTok);
-        if (nameTok.ctx == NameTok.VarArg || nameTok.ctx == NameTok.KwArg || nameTok.ctx == NameTok.PatternName) {
+        if (nameTok.ctx == NameTok.VarArg || nameTok.ctx == NameTok.KwArg) {
             SourceToken token = AbstractVisitor.makeToken(nameTok, moduleName, nature, this.current);
             scope.addToken(token, token, (nameTok).id);
             if (checkCurrentScopeForAssignmentsToBuiltins()) {
@@ -650,7 +668,10 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
                 || node.ctx == Name.KwOnlyParam
                 || (node.ctx == Name.AugStore && found)) { //if it was undefined on augstore, we do not go on to creating the token
             String rep = token.getRepresentation();
-            if (checkCurrentScopeForAssignmentsToBuiltins()) {
+            if (checkCurrentScopeForAssignmentsToBuiltins() &&
+            // In match scope we don't want to report assignment to builtin
+            // as something as: `match None:` is valid.
+                    this.isInMatchScope == 0) {
                 if (builtinTokens.contains(rep)) {
                     // Overriding builtin...
                     onAddAssignmentToBuiltinMessage(token, rep);
@@ -875,9 +896,9 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
 
     @Override
     public Object visitFor(For node) throws Exception {
-        scope.addIfSubScope();
+        scope.addStatementSubScope();
         Object ret = super.visitFor(node);
-        scope.removeIfSubScope();
+        scope.removeStatementSubScope();
         return ret;
     }
 
@@ -894,7 +915,13 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
         }
 
         if (node.type != null) {
+            int scopeType = Scope.SCOPE_TYPE_ANNOTATION;
+            if (futureAnnotationsImported) {
+                scopeType = Scope.SCOPE_TYPE_ANNOTATION_STR;
+            }
+            startScope(scopeType, node.type);
             node.type.accept(this);
+            endScope(node.type);
         }
 
         //in 'target1 = target2 = a', this is 'target1, target2'
@@ -914,7 +941,7 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
      */
     @Override
     public Object visitIf(If node) throws Exception {
-        scope.addIfSubScope();
+        scope.addIfSubScope(node);
         Object r = super.visitIf(node);
         scope.removeIfSubScope();
         return r;
@@ -925,9 +952,9 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
      */
     @Override
     public Object visitWhile(While node) throws Exception {
-        scope.addIfSubScope();
+        scope.addStatementSubScope();
         Object r = super.visitWhile(node);
-        scope.removeIfSubScope();
+        scope.removeStatementSubScope();
         return r;
     }
 
@@ -941,9 +968,9 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
 
     @Override
     public Object visitTryFinally(TryFinally node) throws Exception {
-        scope.addIfSubScope();
+        scope.addStatementSubScope();
         Object r = super.visitTryFinally(node);
-        scope.removeIfSubScope();
+        scope.removeStatementSubScope();
         return r;
     }
 
@@ -1077,7 +1104,7 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
      * @param node
      */
     protected void startScope(int newScopeType, SimpleNode node) {
-        scope.startScope(newScopeType);
+        scope.startScope(newScopeType, node);
         onAfterStartScope(newScopeType, node);
     }
 
@@ -1103,14 +1130,17 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
             for (Found found : foundItems) {
                 //the scope where it is defined must be an outer scope so that we can say it was defined later...
                 final GenAndTok foundItemFirst = found.getSingle();
-
                 //if something was not defined in a method, if we are in the class definition, it won't be found.
 
                 if ((probablyNotDefinedFirst.scopeFound.getScopeType() & Scope.ACCEPTED_METHOD_AND_LAMBDA) != 0
                         && m.getScopeType() != Scope.SCOPE_TYPE_CLASS) {
                     if (foundItemFirst.scopeId < probablyNotDefinedFirst.scopeId) {
-                        found.setUsed(true);
-                        setUsed = true;
+                        if (scope.typeCheckingDefinitionAndUsageOk(foundItemFirst,
+                                probablyNotDefinedFirst.inTypeChecking,
+                                probablyNotDefinedFirst.scopeFound.getScopeType())) {
+                            found.setUsed(true);
+                            setUsed = true;
+                        }
                     }
                 }
             }
@@ -1173,6 +1203,7 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
 
         int acceptedScopes = 0;
         ScopeItems currScopeItems = scope.getCurrScopeItems();
+        boolean inTypeChecking = currScopeItems.isInTypeChecking();
 
         if ((currScopeItems.getScopeType() & Scope.ACCEPTED_METHOD_AND_LAMBDA) != 0) {
             acceptedScopes = Scope.ACCEPTED_METHOD_SCOPES;
@@ -1197,7 +1228,8 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
         //search for it
         while (found == false && it.hasNext()) {
             String nextTokToSearch = it.next();
-            foundAs = scope.findFirst(nextTokToSearch, true, acceptedScopes);
+            foundAs = scope.findFirst(nextTokToSearch, true, acceptedScopes, inTypeChecking,
+                    currScopeItems.getScopeType());
             found = foundAs != null;
             if (found) {
                 foundAsStr = nextTokToSearch;
@@ -1206,6 +1238,20 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
             }
         }
 
+        if (!found) {
+            if (this.scope.isVisitingStrTypeAnnotation()) {
+                FastStack<ISimpleNode> scopeStack = this.currentLocalScope.getScopeStack();
+                for (ISimpleNode n : scopeStack) {
+                    if (n instanceof ClassDef) {
+                        ClassDef classDef = (ClassDef) n;
+                        if (rep.equals(((NameTok) classDef.name).id)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         if (!found) {
             //this token might not be defined... (still, might be in names to ignore)
             int i;

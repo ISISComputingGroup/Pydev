@@ -6,9 +6,9 @@ import java.util.Arrays;
 
 public final class MatchAs extends patternType {
     public patternType pattern;
-    public NameTokType asname;
+    public exprType asname;
 
-    public MatchAs(patternType pattern, NameTokType asname) {
+    public MatchAs(patternType pattern, exprType asname) {
         this.pattern = pattern;
         this.asname = asname;
     }
@@ -42,7 +42,7 @@ public final class MatchAs extends patternType {
     public MatchAs createCopy(boolean copyComments) {
         MatchAs temp = new
         MatchAs(pattern!=null?(patternType)pattern.createCopy(copyComments):null,
-        asname!=null?(NameTokType)asname.createCopy(copyComments):null);
+        asname!=null?(exprType)asname.createCopy(copyComments):null);
         temp.beginLine = this.beginLine;
         temp.beginColumn = this.beginColumn;
         if(this.specialsBefore != null && copyComments){

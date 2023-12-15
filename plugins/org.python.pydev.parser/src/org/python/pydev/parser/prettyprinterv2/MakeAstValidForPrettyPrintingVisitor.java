@@ -46,7 +46,7 @@ import org.python.pydev.parser.jython.ast.ListComp;
 import org.python.pydev.parser.jython.ast.Match;
 import org.python.pydev.parser.jython.ast.MatchAs;
 import org.python.pydev.parser.jython.ast.MatchClass;
-import org.python.pydev.parser.jython.ast.MatchKeyword;
+import org.python.pydev.parser.jython.ast.MatchKeyVal;
 import org.python.pydev.parser.jython.ast.MatchMapping;
 import org.python.pydev.parser.jython.ast.MatchOr;
 import org.python.pydev.parser.jython.ast.MatchSequence;
@@ -54,6 +54,7 @@ import org.python.pydev.parser.jython.ast.MatchValue;
 import org.python.pydev.parser.jython.ast.Module;
 import org.python.pydev.parser.jython.ast.Name;
 import org.python.pydev.parser.jython.ast.NameTok;
+import org.python.pydev.parser.jython.ast.NonLocal;
 import org.python.pydev.parser.jython.ast.Num;
 import org.python.pydev.parser.jython.ast.Pass;
 import org.python.pydev.parser.jython.ast.Print;
@@ -218,7 +219,7 @@ public class MakeAstValidForPrettyPrintingVisitor extends VisitorBase {
     }
 
     @Override
-    public Object visitMatchKeyword(MatchKeyword node) throws Exception {
+    public Object visitMatchKeyVal(MatchKeyVal node) throws Exception {
         fixNode(node);
         traverse(node);
         fixAfterNode(node);
@@ -726,8 +727,12 @@ public class MakeAstValidForPrettyPrintingVisitor extends VisitorBase {
     public Object visitAttribute(Attribute node) throws Exception {
         fixNode(node);
 
-        node.value.accept(this);
-        node.attr.accept(this);
+        if (node.value != null) {
+            node.value.accept(this);
+        }
+        if (node.attr != null) {
+            node.attr.accept(this);
+        }
 
         fixAfterNode(node);
         return null;
@@ -851,6 +856,14 @@ public class MakeAstValidForPrettyPrintingVisitor extends VisitorBase {
             n.accept(this);
         }
 
+        fixAfterNode(node);
+        return null;
+    }
+
+    @Override
+    public Object visitNonLocal(NonLocal node) throws Exception {
+        fixNode(node);
+        node.traverse(this);
         fixAfterNode(node);
         return null;
     }
@@ -1193,8 +1206,10 @@ public class MakeAstValidForPrettyPrintingVisitor extends VisitorBase {
         fixNode(node);
         if (node.dims != null) {
             for (int i = 0; i < node.dims.length; i++) {
-                node.dims[i].accept(this);
-                nextCol();
+                if (node.dims[i] != null) {
+                    node.dims[i].accept(this);
+                    nextCol();
+                }
             }
         }
         fixAfterNode(node);

@@ -458,4 +458,79 @@ public class PyParser310Test extends PyParserTestBase {
         });
 
     }
+
+    public void testRegularMatchCase() {
+        checkWithAllGrammars310Onwards((grammarVersion) -> {
+            String s = ""
+                    + "match = {}            \n"
+                    + "match['x'] = 1        \n"
+                    + "match.update({'x': 1})\n"
+                    + "";
+
+            parseLegalDocStr(s);
+            return true;
+        });
+    }
+
+    public void testMatchCase() {
+        checkWithAllGrammars310Onwards((grammarVersion) -> {
+            String s = ""
+                    + "match x:                        \n"
+                    + "    case A.B.c:                 \n"
+                    + "        print('matched c')      \n"
+                    + "    case _:                     \n"
+                    + "        print('did not match c')\n"
+                    + "";
+
+            parseLegalDocStr(s);
+            return true;
+        });
+    }
+
+    public void testMatchLiteralAs() {
+        checkWithAllGrammars310Onwards((grammarVersion) -> {
+            String s = ""
+                    + "def swallow_report(bird):\n"
+                    + "    match bird:\n"
+                    + "        case {\"family\": \"Hirundinidae\" as fam}:\n"
+                    + "            print(fam)\n"
+                    + "        case _:\n"
+                    + "            print(\"no match\")\n"
+                    + "\n"
+                    + "b1 = {\n"
+                    + "     \"family\": \"Hirundinidae\", \n"
+                    + "     \"status\": \"data deficient\"\n"
+                    + "    }\n"
+                    + "\n"
+                    + "swallow_report(b1)"
+                    + "";
+
+            parseLegalDocStr(s);
+            return true;
+        });
+    }
+
+    public void testMatchOther() {
+        checkWithAllGrammars310Onwards((grammarVersion) -> {
+            String s = ""
+                    + "def swallow_report(bird):\n"
+                    + "    match bird:\n"
+                    + "        case {\"family\": \"Hirundinidae\" as fam, **other}:\n"
+                    + "            print(fam)\n"
+                    + "            print(other)\n"
+                    + "        case _:\n"
+                    + "            print(\"no match\")\n"
+                    + "\n"
+                    + "b1 = {\n"
+                    + "     \"family\": \"Hirundinidae\", \n"
+                    + "     \"status\": \"data deficient\"\n"
+                    + "    }\n"
+                    + "\n"
+                    + "swallow_report(b1)"
+                    + "";
+            parseLegalDocStr(s);
+            return true;
+        });
+    }
+
 }

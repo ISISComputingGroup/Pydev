@@ -422,7 +422,7 @@ public class OccurrencesAnalyzerPy310Test extends AnalysisTestsBase {
 
     public void testWildcardPattern() {
         doc = new Document(""
-                + "match \"foo bar\".split()\n"
+                + "match \"foo bar\".split():\n"
                 + "    case (\"doo\", \"lee\"):\n"
                 + "        pass\n"
                 + "    case _:\n"
@@ -433,7 +433,7 @@ public class OccurrencesAnalyzerPy310Test extends AnalysisTestsBase {
     public void testNonPatternWildcard() {
         doc = new Document(""
                 + "x = 10\n"
-                + "match \"foo bar\".split()\n"
+                + "match \"foo bar\".split():\n"
                 + "    case (\"doo\", \"lee\"):\n"
                 + "        pass\n"
                 + "x = _");
@@ -443,7 +443,7 @@ public class OccurrencesAnalyzerPy310Test extends AnalysisTestsBase {
     public void testNonPatternWildcard2() {
         doc = new Document(""
                 + "x = 10\n"
-                + "match \"foo bar\".split()\n"
+                + "match \"foo bar\".split():\n"
                 + "    case (\"doo\", \"lee\"):\n"
                 + "        pass\n"
                 + "    case _:\n"
@@ -517,6 +517,211 @@ public class OccurrencesAnalyzerPy310Test extends AnalysisTestsBase {
                 + "with f('c') as a, f('a') as b:\n"
                 + "    print(a)\n"
                 + "    print(b)");
+        checkNoError();
+    }
+
+    public void testWithStmt4() {
+        doc = new Document("value = None\n"
+                + "\n"
+                + "match value:\n"
+                + "    case None:\n"
+                + "        print('matched none')\n"
+                + "");
+        checkNoError();
+    }
+
+    public void testRestInMatch() {
+        doc = new Document("def swallow_report(bird):\n"
+                + "    match bird:\n"
+                + "        case {\"family\": \"Hirundinidae\" as fam, \"common name\": cn, **other}:\n"
+                + "            print(f\"The {cn} is a kind of swallow, a member of the {fam} family.\")\n"
+                + "            for key, value in other.items():\n"
+                + "                print(f\"\\t{key}: {value}\")\n"
+                + "        case {\"common name\": cn, **other}:\n"
+                + "            print(f'The {cn} is not a kind of swallow.')\n"
+                + "        case _:\n"
+                + "            print(\"no match\")\n"
+                + "\n"
+                + "b1 = {\n"
+                + "     \"common name\": \"African river martin\", \n"
+                + "     \"species\": \"Pseudochelidon eurystomina\",\n"
+                + "     \"family\": \"Hirundinidae\", \n"
+                + "     \"migrates\": True,\n"
+                + "     \"status\": \"data deficient\"\n"
+                + "    }\n"
+                + "\n"
+                + "swallow_report(b1)");
+        checkNoError();
+    }
+
+    public void testTypingInfoInStr() {
+        doc = new Document("from typing import Hashable\n"
+                + "a: \"Hashable\"\n"
+                + "");
+        checkNoError();
+    }
+
+    public void testTypingInfoInStrOk() {
+        doc = new Document("class MyClass:\n"
+                + "    def method(self, a: \"MyClass\"):\n"
+                + "        pass");
+        checkNoError();
+    }
+
+    public void testTypingInfoOk() {
+        doc = new Document(""
+                + "def method():   \n"
+                + "    a: SomeClass\n"
+                + "    print(a)\n"
+                + "class SomeClass:\n"
+                + "    pass        \n"
+                + "");
+        checkNoError();
+    }
+
+    public void testTypingInfoInStrOk2() {
+        doc = new Document(""
+                + ""
+                + "def method(a: 'MyClass'):\n"
+                + "    pass\n"
+                + "class MyClass:\n"
+                + "    pass"
+                + "");
+        checkNoError();
+    }
+
+    public void testTypingInfoInStrBad() {
+        doc = new Document("\n"
+                + "a: 'Hashable'\n"
+                + "");
+        IMessage[] messages = checkError("Undefined variable: Hashable\n");
+        assertEquals(1, messages.length);
+        assertEquals(2, messages[0].getStartLine(doc));
+        assertEquals(2, messages[0].getEndLine(doc));
+        assertEquals(5, messages[0].getStartCol(doc));
+        assertEquals(5 + 8, messages[0].getEndCol(doc));
+    }
+
+    public void testTypingInfoInStrBad2() {
+        doc = new Document("\n"
+                + "def method(b: 'Hashable'):\n"
+                + "    pass\n"
+                + "");
+        IMessage[] messages = checkError("Undefined variable: Hashable\n");
+        assertEquals(1, messages.length);
+        assertEquals(2, messages[0].getStartLine(doc));
+        assertEquals(2, messages[0].getEndLine(doc));
+        assertEquals(16, messages[0].getStartCol(doc));
+        assertEquals(16 + 8, messages[0].getEndCol(doc));
+    }
+
+    public void testTypingInfoInStrBad3() {
+        doc = new Document("\n"
+                + "def method(b: 'this.. is not ..correct'):\n"
+                + "    pass\n"
+                + "");
+        IMessage[] messages = checkErrorWithFilter((msg) -> {
+            return msg.startsWith("SyntaxError: ");
+        });
+        assertEquals(1, messages.length);
+        assertEquals(2, messages[0].getStartLine(doc));
+        assertEquals(2, messages[0].getEndLine(doc));
+        assertEquals(32, messages[0].getStartCol(doc));
+    }
+
+    public void testTypingInTypeChecking() {
+        // i.e.: when an import is added when 'TYPE_CHECKING' it should not
+        // be considered a reimport afterwards.
+        doc = new Document(""
+                + "import typing\n"
+                + "if typing.TYPE_CHECKING:\n"
+                + "    import functools\n"
+                + "def method() -> 'functools.partial':\n"
+                + "    import functools\n"
+                + "    print(functools.partial)\n");
+        checkNoError();
+    }
+
+    public void testTypingInTypeCheckingUndefined() {
+        // i.e.: It's defined only when type-checking, so, it's an
+        // error to try to actually access it.
+        doc = new Document(""
+                + "import typing\n"
+                + "if typing.TYPE_CHECKING:\n"
+                + "    import functools\n"
+                + "def method() -> 'functools.partial':\n"
+                + "    print(functools.partial)\n");
+        IMessage[] messages = checkError("Undefined variable: functools\n");
+        assertEquals(1, messages.length);
+        assertEquals(5, messages[0].getStartLine(doc));
+    }
+
+    public void testTypingInTypeCheckingDefinedWithFutureImport() {
+        doc = new Document("from __future__ import annotations\n"
+                + "\n"
+                + "import typing\n"
+                + "\n"
+                + "if typing.TYPE_CHECKING:\n"
+                + "    import functools\n"
+                + "\n"
+                + "\n"
+                + "def method() -> functools.partial:\n"
+                + "    pass\n"
+                + "");
+        checkNoError();
+    }
+
+    public void testTypingInStrMarksAsUsed() {
+        doc = new Document("import typing\n"
+                + "\n"
+                + "if typing.TYPE_CHECKING:\n"
+                + "    import functools\n"
+                + "\n"
+                + "\n"
+                + "def method() -> 'functools.partial':\n"
+                + "    pass\n"
+                + "");
+        checkNoError();
+    }
+
+    public void testTypingInTypeCheckingUndefinedWithoutFutureImport() {
+        doc = new Document("import typing\n"
+                + "\n"
+                + "if typing.TYPE_CHECKING:\n"
+                + "    import functools\n"
+                + "\n"
+                + "\n"
+                + "def method() -> functools.partial:\n"
+                + "    pass\n"
+                + "");
+        // i.e.: it's only defined when type checking!
+        IMessage[] messages = checkError("Undefined variable: functools\n");
+        assertEquals(1, messages.length);
+        assertEquals(7, messages[0].getStartLine(doc));
+    }
+
+    public void testTypingWithLiterals() {
+        doc = new Document("import typing\n"
+                + "def method() -> typing.Literal['a', 'b']:\n"
+                + "    return 'a'\n"
+                + "");
+        checkNoError();
+    }
+
+    public void testOverload() {
+        doc = new Document("from typing import overload\n"
+                + "\n"
+                + "\n"
+                + "class C:\n"
+                + "    @overload\n"
+                + "    def foo(self, a: int) -> None: ...\n"
+                + "\n"
+                + "    @overload\n"
+                + "    def foo(self, a: str) -> None: ...\n"
+                + "\n"
+                + "    def foo(self, a: int | str) -> None:\n"
+                + "        print(a)  # dummy impl"
+                + "");
         checkNoError();
     }
 }

@@ -20,7 +20,12 @@ import org.python.pydev.shared_core.utils.ArrayUtils;
 
 public class BlackRunner {
 
-    public static String formatWithBlack(IPythonNature nature, IDocument doc, FormatStd std, File workingDir) {
+    /**
+     * @param filepath note that it may be null
+     * @return
+     */
+    public static String formatWithBlack(String filepath, IPythonNature nature, IDocument doc, FormatStd std,
+            File workingDir) {
         try {
             Process process;
             String[] parseArguments = ProcessUtils.parseArguments(std.blackParameters);
@@ -44,8 +49,13 @@ public class BlackRunner {
                     }
                 }
                 PythonRunner pythonRunner = new PythonRunner(nature);
+
+                String[] pathArgs = filepath != null && filepath.length() > 0
+                        ? new String[] { "--stdin-filename", filepath }
+                        : new String[0];
+
                 Tuple<Process, String> processInfo = pythonRunner.createProcessFromModuleName("black",
-                        ArrayUtils.concatArrays(new String[] { "-" }, parseArguments),
+                        ArrayUtils.concatArrays(new String[] { "-" }, pathArgs, parseArguments),
                         workingDir, new NullProgressMonitor());
                 process = processInfo.o1;
                 cmdarrayAsStr = processInfo.o2;
@@ -55,22 +65,8 @@ public class BlackRunner {
             if (pythonFileEncoding == null) {
                 pythonFileEncoding = "utf-8";
             }
-            boolean failedWrite = false;
-            try {
-                process.getOutputStream().write(doc.get().getBytes(pythonFileEncoding));
-            } catch (Exception e) {
-                failedWrite = true;
-            }
-            Tuple<String, String> processOutput = ProcessUtils.getProcessOutput(process, cmdarrayAsStr,
-                    new NullProgressMonitor(), pythonFileEncoding);
-
-            if (process.exitValue() != 0 || failedWrite) {
-                Log.log("Black formatter exited with: " + process.exitValue() + " failedWrite: " + failedWrite
-                        + "\nStdout:\n" + processOutput.o1
-                        + "\nStderr:\n" + processOutput.o2);
-                return null;
-            }
-            return processOutput.o1;
+            return RunnerCommon.writeContentsAndGetOutput(doc.get().getBytes(pythonFileEncoding), pythonFileEncoding,
+                    process, cmdarrayAsStr, "black");
         } catch (Exception e) {
             Log.log(e);
         }
