@@ -846,7 +846,7 @@ void stmt() #void: {}
 
         async_stmt()
     |
-    	LOOKAHEAD(2)
+    	LOOKAHEAD(match_stmt())
     	match_stmt()
     |
         non_async_stmt()
@@ -1163,16 +1163,16 @@ void closed_pattern() : {}
     // | wildcard_pattern() "_" is matched as a regular Name
 }
 
-void literal_pattern() #void : {}
+void literal_pattern(): {}
 {
     signed_number() (
         <PLUS> signed_number() #add_2op(2)
         | <MINUS> signed_number() #sub_2op(2)
     )?
     | String()
-    | <NONE>
-    | <TRUE>
-    | <FALSE>
+    | (<FALSE>)#False
+    | (<TRUE>)#True
+    | (<NONE>)#None
 }
 
 void signed_number() #void : {}
@@ -1345,14 +1345,14 @@ void begin_finally_stmt(): {}
 
 //except_clause: 'except' [test [as test]]
 void except_clause(SimpleNode tryNode): {}
-{ 
+{
 	(
 	begin_except_clause() {this.grammarActions.addToPeek("except",false);}
 	|
 	begin_except_multiply_clause() {this.grammarActions.addToPeek("except*",false);}
 	)
 
-	[test() [{grammarActions.findTokenAndAdd("as");}<AS> test()]] {grammarActions.findTokenAndAdd(":");}<COLON> suite() 
+	[test() [{grammarActions.findTokenAndAdd("as");}<AS> test()]] {grammarActions.findTokenAndAdd(":");}<COLON> suite()
 }
 
 void begin_except_clause(): {}

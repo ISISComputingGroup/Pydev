@@ -58,6 +58,7 @@ import org.python.pydev.parser.jython.ast.Yield;
 import org.python.pydev.parser.jython.ast.decoratorsType;
 import org.python.pydev.parser.jython.ast.match_caseType;
 import org.python.pydev.parser.jython.ast.str_typeType;
+import org.python.pydev.parser.visitors.NodeUtils;
 import org.python.pydev.shared_core.callbacks.ICallbackListener;
 import org.python.pydev.shared_core.model.ErrorDescription;
 import org.python.pydev.shared_core.structure.FastStack;
@@ -137,6 +138,7 @@ public final class OccurrencesVisitor extends AbstractScopeAnalyzerVisitor {
     public void traverse(match_caseType node) throws Exception {
         checkStop();
         isInTestScope += 1;
+        isInMatchScope += 1;
         if (node.pattern != null) {
             node.pattern.accept(this);
         }
@@ -144,6 +146,7 @@ public final class OccurrencesVisitor extends AbstractScopeAnalyzerVisitor {
             node.guard.accept(this);
         }
         isInTestScope -= 1;
+        isInMatchScope -= 1;
         if (node.body != null) {
             for (SimpleNode n : node.body) {
                 if (n != null) {
@@ -248,22 +251,49 @@ public final class OccurrencesVisitor extends AbstractScopeAnalyzerVisitor {
 
     @Override
     public Object visitStr(Str node) throws Exception {
+        if (this.scope.isVisitingTypeAnnotation()) {
+            String fullRepresentationString = NodeUtils.getFullRepresentationString(scope.currentScope().scopeNode);
+
+            // If a string is found inside a typing.Literal, don't parse it for type definitions
+            // (i.e.: those are considered constants in this case and not class references as in
+            // generic classes).
+            if (!"typing.Literal".equals(fullRepresentationString) && !"Literal".equals(fullRepresentationString)) {
+                String s = node.s;
+                IGrammar grammar = PyParser.createGrammar(true, this.nature.getGrammarVersion(), s.toCharArray());
+                Throwable errorOnParsing = null;
+                int startInternalStrColOffset = getStrOffset(node);
+                try {
+                    SimpleNode typingNode = grammar.file_input();
+                    errorOnParsing = grammar.getErrorOnParsing();
+                    if (errorOnParsing == null) {
+                        new FixLinesVisitor(node.beginLine - 1, node.beginColumn + startInternalStrColOffset - 1)
+                                .traverse(typingNode);
+                        this.scope.startScope(Scope.SCOPE_TYPE_ANNOTATION_STR, node);
+                        try {
+                            this.traverse(typingNode);
+                        } finally {
+                            this.scope.endScope();
+                        }
+                    }
+                } catch (Exception e) {
+                    if (errorOnParsing == null) {
+                        errorOnParsing = e;
+                    }
+                }
+                if (errorOnParsing != null) {
+                    IDocument doc = new Document(s);
+                    reportParserError(node, node.beginLine, node.beginColumn + startInternalStrColOffset, doc,
+                            errorOnParsing);
+                }
+            }
+        }
         if (node.fstring && (node.fstring_nodes == null || node.fstring_nodes.length == 0)) {
             // Note: if fstring_nodes have been pre-processed (i.e.: in cython parsing), we don't parse
             // it here and just visit those contents in super.visitStr.
             String s = node.s;
             @SuppressWarnings("rawtypes")
             List parseErrors = null;
-            int startInternalStrColOffset = 2; // +1 for 'f' and +1 for the quote.
-            if (node.raw) {
-                startInternalStrColOffset += 1;
-            }
-            if (node.unicode) {
-                startInternalStrColOffset += 1;
-            }
-            if (node.type == str_typeType.TripleDouble || node.type == str_typeType.TripleSingle) {
-                startInternalStrColOffset += 2;
-            }
+            int startInternalStrColOffset = getStrOffset(node);
             FStringsAST ast = null;
             if (s.trim().length() > 0) {
                 try {
@@ -291,6 +321,23 @@ public final class OccurrencesVisitor extends AbstractScopeAnalyzerVisitor {
             }
         }
         return super.visitStr(node);
+    }
+
+    public static int getStrOffset(Str node) {
+        int startInternalStrColOffset = 1; // +1 for the quote.
+        if (node.raw) {
+            startInternalStrColOffset += 1;
+        }
+        if (node.unicode) {
+            startInternalStrColOffset += 1;
+        }
+        if (node.fstring) {
+            startInternalStrColOffset += 1;
+        }
+        if (node.type == str_typeType.TripleDouble || node.type == str_typeType.TripleSingle) {
+            startInternalStrColOffset += 2;
+        }
+        return startInternalStrColOffset;
     }
 
     private void analyzeFStringAst(Str node, int startInternalStrColOffset, FStringsAST ast, IDocument doc)

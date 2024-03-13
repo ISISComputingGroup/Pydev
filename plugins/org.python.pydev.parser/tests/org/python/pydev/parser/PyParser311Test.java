@@ -48,4 +48,5 @@ public class PyParser311Test extends PyParserTestBase {
         TryExcept t = (TryExcept) entry.node;
         assertTrue(t.handlers[0].isExceptionGroup);
     }
+
 }

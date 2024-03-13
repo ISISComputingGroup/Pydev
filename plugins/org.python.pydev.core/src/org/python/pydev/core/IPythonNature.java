@@ -41,7 +41,7 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
         public static final List<String> VERSION_NUMBERS = new ArrayList<String>();
 
         public static final String JYTHON_VERSION_LATEST = JYTHON_VERSION_3_0;
-        public static final String PYTHON_VERSION_LATEST = PYTHON_VERSION_3_11;
+        public static final String PYTHON_VERSION_LATEST = PYTHON_VERSION_3_12;
         public static final String IRONPYTHON_VERSION_LATEST = IRONPYTHON_VERSION_3_0;
 
         public static final String INTERPRETER_VERSION = "interpreter";
@@ -51,6 +51,8 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
         public static final String JYTHON_PREFIX = "jython";
         public static final String IRONYTHON_PREFIX = "ironpython";
 
+        public static final String LATEST_VERSION_NUMBER = "3.12";
+
         static {
             ALL_PYTHON_VERSIONS.add(PYTHON_VERSION_3_0);
             ALL_PYTHON_VERSIONS.add(PYTHON_VERSION_3_6);
@@ -59,6 +61,7 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
             ALL_PYTHON_VERSIONS.add(PYTHON_VERSION_3_9);
             ALL_PYTHON_VERSIONS.add(PYTHON_VERSION_3_10);
             ALL_PYTHON_VERSIONS.add(PYTHON_VERSION_3_11);
+            ALL_PYTHON_VERSIONS.add(PYTHON_VERSION_3_12);
             ALL_PYTHON_VERSIONS.add(PYTHON_VERSION_INTERPRETER);
 
             ALL_JYTHON_VERSIONS.add(JYTHON_VERSION_3_0);
@@ -68,6 +71,7 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
             ALL_JYTHON_VERSIONS.add(JYTHON_VERSION_3_9);
             ALL_JYTHON_VERSIONS.add(JYTHON_VERSION_3_10);
             ALL_JYTHON_VERSIONS.add(JYTHON_VERSION_3_11);
+            ALL_JYTHON_VERSIONS.add(JYTHON_VERSION_3_12);
             ALL_JYTHON_VERSIONS.add(JYTHON_VERSION_INTERPRETER);
 
             ALL_IRONPYTHON_VERSIONS.add(IRONPYTHON_VERSION_3_0);
@@ -77,6 +81,7 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
             ALL_IRONPYTHON_VERSIONS.add(IRONPYTHON_VERSION_3_9);
             ALL_IRONPYTHON_VERSIONS.add(IRONPYTHON_VERSION_3_10);
             ALL_IRONPYTHON_VERSIONS.add(IRONPYTHON_VERSION_3_11);
+            ALL_IRONPYTHON_VERSIONS.add(IRONPYTHON_VERSION_3_12);
             ALL_IRONPYTHON_VERSIONS.add(IRONPYTHON_VERSION_INTERPRETER);
 
             ALL_VERSIONS_ANY_FLAVOR.addAll(ALL_JYTHON_VERSIONS);
@@ -90,6 +95,7 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
             VERSION_NUMBERS.add("3.9"); // actually the same as 3.8
             VERSION_NUMBERS.add("3.10");
             VERSION_NUMBERS.add("3.11");
+            VERSION_NUMBERS.add("3.12");
             VERSION_NUMBERS.add(INTERPRETER_VERSION);
 
             // Anything below 3.5 is marked as 3.5
@@ -111,6 +117,8 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
             mappedVersions.put("3.10", "3.10");
 
             mappedVersions.put("3.11", "3.11");
+
+            mappedVersions.put("3.12", "3.12");
         }
 
         /**
@@ -163,8 +171,8 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
                         + " is no longer supported.\n\nPlease refer to: Need to use older Eclipse/Java/Python\n\nin https://www.pydev.org/download.html\n\n");
             }
             // It seems a version we don't directly support, let's check it...
-            Log.log("Unsupported version:" + version + " (falling back to 3.11)");
-            buf.append("3.11"); // latest 3
+            Log.log("Unsupported version:" + version + " (falling back to " + LATEST_VERSION_NUMBER + ")");
+            buf.append(LATEST_VERSION_NUMBER); // latest 3
             String fullVersion = buf.toString();
             if (ALL_VERSIONS_ANY_FLAVOR.contains(fullVersion)) {
                 return fullVersion;
@@ -206,6 +214,7 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
     public static final String PYTHON_VERSION_3_9 = "python 3.9";
     public static final String PYTHON_VERSION_3_10 = "python 3.10";
     public static final String PYTHON_VERSION_3_11 = "python 3.11";
+    public static final String PYTHON_VERSION_3_12 = "python 3.12";
     public static final String PYTHON_VERSION_INTERPRETER = "python interpreter";
 
     public static final String JYTHON_VERSION_3_0 = "jython 3.5";
@@ -215,6 +224,7 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
     public static final String JYTHON_VERSION_3_9 = "jython 3.9";
     public static final String JYTHON_VERSION_3_10 = "jython 3.10";
     public static final String JYTHON_VERSION_3_11 = "jython 3.11";
+    public static final String JYTHON_VERSION_3_12 = "jython 3.12";
     public static final String JYTHON_VERSION_INTERPRETER = "jython interpreter";
 
     public static final String IRONPYTHON_VERSION_3_0 = "ironpython 3.5";
@@ -224,6 +234,7 @@ public interface IPythonNature extends IProjectNature, IGrammarVersionProvider, 
     public static final String IRONPYTHON_VERSION_3_9 = "ironpython 3.9";
     public static final String IRONPYTHON_VERSION_3_10 = "ironpython 3.10";
     public static final String IRONPYTHON_VERSION_3_11 = "ironpython 3.11";
+    public static final String IRONPYTHON_VERSION_3_12 = "ironpython 3.12";
     public static final String IRONPYTHON_VERSION_INTERPRETER = "ironpython interpreter";
 
     /**

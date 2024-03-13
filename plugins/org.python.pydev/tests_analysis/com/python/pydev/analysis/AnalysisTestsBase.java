@@ -9,6 +9,7 @@
  */
 package com.python.pydev.analysis;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -23,6 +24,7 @@ import org.python.pydev.ast.codecompletion.revisited.CodeCompletionTestsBase;
 import org.python.pydev.ast.codecompletion.revisited.ProjectModulesManager;
 import org.python.pydev.ast.codecompletion.revisited.modules.AbstractModule;
 import org.python.pydev.ast.codecompletion.revisited.modules.CompiledModule;
+import org.python.pydev.ast.codecompletion.revisited.modules.SourceModule;
 import org.python.pydev.ast.interpreter_managers.InterpreterInfo;
 import org.python.pydev.core.ICodeCompletionASTManager;
 import org.python.pydev.core.IInfo;
@@ -152,6 +154,24 @@ public class AnalysisTestsBase extends CodeCompletionTestsBase {
         return msgs;
     }
 
+    public interface IErrorFilter {
+        public boolean accept(String m);
+    }
+
+    protected IMessage[] checkErrorWithFilter(IErrorFilter filter) {
+        analyzer = new OccurrencesAnalyzer();
+        msgs = analyze();
+
+        List<IMessage> ret = new ArrayList<>();
+        for (IMessage msg : msgs) {
+            if (filter.accept(msg.getMessage().trim())) {
+                ret.add(msg);
+            }
+        }
+
+        return ret.toArray(new IMessage[0]);
+    }
+
     /**
      * Uses the doc attribute as the module and makes the analysis, checking if no error is found.
      * @return the messages that were reported as errors
@@ -181,9 +201,12 @@ public class AnalysisTestsBase extends CodeCompletionTestsBase {
     private IMessage[] analyze() {
         assertEquals(GRAMMAR_TO_USE_FOR_PARSING, nature.getGrammarVersion());
         try {
-            return analyzer.analyzeDocument(nature,
-                    AbstractModule.createModuleFromDoc(null, null, doc, nature, true), prefs, doc,
-                    new NullProgressMonitor(), new TestIndentPrefs(true, 4));
+            final SourceModule mod = AbstractModule.createModuleFromDoc(null, null, doc, nature, true);
+            if (mod.parseError != null) {
+                throw new RuntimeException(mod.parseError);
+            }
+            return analyzer.analyzeDocument(nature, mod, prefs, doc, new NullProgressMonitor(),
+                    new TestIndentPrefs(true, 4));
         } catch (MisconfigurationException e) {
             throw new RuntimeException(e);
         }

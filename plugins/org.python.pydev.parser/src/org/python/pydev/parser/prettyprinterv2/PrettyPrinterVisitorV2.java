@@ -44,13 +44,14 @@ import org.python.pydev.parser.jython.ast.ListComp;
 import org.python.pydev.parser.jython.ast.Match;
 import org.python.pydev.parser.jython.ast.MatchAs;
 import org.python.pydev.parser.jython.ast.MatchClass;
-import org.python.pydev.parser.jython.ast.MatchKeyword;
+import org.python.pydev.parser.jython.ast.MatchKeyVal;
 import org.python.pydev.parser.jython.ast.MatchMapping;
 import org.python.pydev.parser.jython.ast.MatchOr;
 import org.python.pydev.parser.jython.ast.MatchSequence;
 import org.python.pydev.parser.jython.ast.MatchValue;
 import org.python.pydev.parser.jython.ast.Name;
 import org.python.pydev.parser.jython.ast.NameTok;
+import org.python.pydev.parser.jython.ast.NonLocal;
 import org.python.pydev.parser.jython.ast.Num;
 import org.python.pydev.parser.jython.ast.Pass;
 import org.python.pydev.parser.jython.ast.Print;
@@ -878,20 +879,54 @@ public final class PrettyPrinterVisitorV2 extends PrettyPrinterUtilsV2 {
     }
 
     @Override
-    public Object visitGlobal(Global node) throws Exception {
+    public Object visitNonLocal(NonLocal node) throws Exception {
         beforeNode(node);
-        doc.addRequire("global", node);
-
+        int id = doc.pushRecordChanges();
+        doc.addRequire("nonlocal ", node);
         if (node.names != null) {
-            for (int i = 0; i < node.names.length; i++) {
-                if (i > 0) {
-                    doc.addRequire(",", lastNode);
-                }
-                if (node.names[i] != null) {
-                    node.names[i].accept(this);
+            if (node.names.length > 0) {
+                for (int i = 0; i < node.names.length; i++) {
+                    if (i > 0) {
+                        doc.addRequire(",", lastNode);
+                    }
+                    if (node.names[i] != null) {
+                        node.names[i].accept(this);
+                    }
                 }
             }
         }
+        java.util.List<ILinePart> recordedChanges = this.doc.popRecordChanges(id);
+        this.doc.replaceRecorded(recordedChanges, "nonlocal", "nonlocal ");
+
+        if (node.value != null) {
+            doc.addRequire("=", lastNode);
+            node.value.accept(this);
+        }
+
+        afterNode(node);
+        return null;
+    }
+
+    @Override
+    public Object visitGlobal(Global node) throws Exception {
+        beforeNode(node);
+        int id = doc.pushRecordChanges();
+        doc.addRequire("global ", node);
+        if (node.names != null) {
+            if (node.names.length > 0) {
+                for (int i = 0; i < node.names.length; i++) {
+                    if (i > 0) {
+                        doc.addRequire(",", lastNode);
+                    }
+                    if (node.names[i] != null) {
+                        node.names[i].accept(this);
+                    }
+                }
+            }
+        }
+        java.util.List<ILinePart> recordedChanges = this.doc.popRecordChanges(id);
+        this.doc.replaceRecorded(recordedChanges, "global", "global ");
+
         if (node.value != null) {
             doc.addRequire("=", lastNode);
             node.value.accept(this);
@@ -1327,11 +1362,15 @@ public final class PrettyPrinterVisitorV2 extends PrettyPrinterUtilsV2 {
     public Object visitExtSlice(ExtSlice node) throws Exception {
         beforeNode(node);
         if (node.dims != null) {
+            boolean found = false;
             for (int i = 0; i < node.dims.length; i++) {
-                if (i > 0) {
-                    this.doc.addRequire(",", lastNode);
+                if (node.dims[i] != null) {
+                    if (found) {
+                        this.doc.addRequire(",", lastNode);
+                    }
+                    node.dims[i].accept(this);
+                    found = true;
                 }
-                node.dims[i].accept(this);
             }
         }
         afterNode(node);
@@ -1714,7 +1753,7 @@ public final class PrettyPrinterVisitorV2 extends PrettyPrinterUtilsV2 {
     public Object visitMatchClass(MatchClass node) throws Exception {
         beforeNode(node);
         node.cls.accept(this);
-        doc.addRequire("(", node);
+        doc.addRequire("(", lastNode);
         if (node.args != null) {
             for (int i = 0; i < node.args.length; i++) {
                 if (i > 0) {
@@ -1730,9 +1769,9 @@ public final class PrettyPrinterVisitorV2 extends PrettyPrinterUtilsV2 {
     }
 
     @Override
-    public Object visitMatchKeyword(MatchKeyword node) throws Exception {
+    public Object visitMatchKeyVal(MatchKeyVal node) throws Exception {
         beforeNode(node);
-        node.arg.accept(this);
+        node.key.accept(this);
         doc.addRequire("=", lastNode);
         node.value.accept(this);
         afterNode(node);
@@ -1741,16 +1780,18 @@ public final class PrettyPrinterVisitorV2 extends PrettyPrinterUtilsV2 {
 
     @Override
     public Object visitMatchMapping(MatchMapping node) throws Exception {
-        int length = node.keys.length;
+        int length = node.keyValues.length;
         beforeNode(node);
         doc.addRequire("{", lastNode);
         for (int i = 0; i < length; i++) {
             if (i > 0) {
                 doc.addRequire(",", lastNode);
             }
-            node.keys[i].accept(this);
+            MatchKeyVal keyValue = (MatchKeyVal) node.keyValues[i];
+
+            keyValue.key.accept(this);
             doc.addRequire(":", lastNode);
-            node.values[i].accept(this);
+            keyValue.value.accept(this);
         }
         doc.addRequire("}", lastNode);
         afterNode(node);
