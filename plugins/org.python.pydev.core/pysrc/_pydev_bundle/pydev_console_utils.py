@@ -397,8 +397,10 @@ class BaseInterpreterInterface:
             if self.interruptable:
                 # Fix for #PyDev-500: Console interrupt can't interrupt on sleep
                 interrupt_main_thread(self.mainThread)
-
-            self.finish_exec(False)
+            # Don't assume that just because we've interrupted the main thread,
+            # it will actually finish.
+            # The KeyboardInterrupt exception may be handled by the code in question.
+            # self.finish_exec(False)
             return True
         except:
             traceback.print_exc()
