@@ -1,17 +1,21 @@
-PyDev 11.0.2 Released
+PyDev 13.1.0 Released
 
-PyDev 11.0.2 Release Highlights
+PyDev 13.1.0 Release Highlights
 -------------------------------
 
-Continuing with the updates to Python 3.12, the new release integrates
-the latest version of typeshed (so, **from typing import override** is
-now properly recognized).
+## Updates & Improvements
 
-Also, it's now possible to specify vmargs in the python interpreter
-(and not just in the launch configuration).
+- It's now possible to use `pyright` analysis support
+- `pydevd` (debugger) updated to `3.4.1`
+	- Preliminary support for debugging with `Python 3.14` (still not complete)
+- Consider `@abstractclassmethod` and `@abstractstaticmethod` decorators in code analysis.
+- Use plain `super()` in override completion.
 
-For Python 3.11 onwards, **-Xfrozen_modules=off** is now
-set in the vm arguments by default.
+## Bug Fixes
+
+- If a default interpreter cannot be found, the latest Python 3 version is used to parse the code.
+- Type definition in non-global scope (inside a method) should not give an error if the token is just found in the TYPE_CHECKING namespace.
+- Fixed issues dealing with name store in match where spurious unused variable would be found. `#PyDev-1272`
 
 About PyDev
 ---------------------------

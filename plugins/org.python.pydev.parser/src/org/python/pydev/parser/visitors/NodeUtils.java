@@ -82,6 +82,7 @@ import org.python.pydev.parser.jython.ast.operatorType;
 import org.python.pydev.parser.jython.ast.sliceType;
 import org.python.pydev.parser.jython.ast.stmtType;
 import org.python.pydev.parser.jython.ast.suiteType;
+import org.python.pydev.parser.jython.ast.factory.PyAstFactory;
 import org.python.pydev.parser.prettyprinterv2.PrettyPrinterPrefsV2;
 import org.python.pydev.parser.prettyprinterv2.PrettyPrinterV2;
 import org.python.pydev.parser.visitors.scope.ASTEntry;
@@ -1234,7 +1235,7 @@ public final class NodeUtils {
             if (part.endsWith("()")) {
                 if (i == dotSplit.size() - 1) {
                     part = part.substring(0, part.length() - 2);
-                    call = new Call(null, new exprType[0], new keywordType[0], null, null);
+                    call = new Call(null, PyAstFactory.EMPTY_EXPR_TYPE, new keywordType[0], null, null);
                     first = call;
                 } else {
                     throw new RuntimeException("Call only accepted in the last part.");
@@ -1321,7 +1322,7 @@ public final class NodeUtils {
         return EMPTY_STMT;
     }
 
-    private final static stmtType[] EMPTY_STMT = new stmtType[0];
+    private final static stmtType[] EMPTY_STMT = PyAstFactory.EMPTY_STMT_TYPE;
 
     /**
      * Sets the body of some node.
@@ -2207,7 +2208,7 @@ public final class NodeUtils {
     public static exprType extractOptionalValueSubscript(exprType node) {
         if (node instanceof Str) {
             ParseOutput objects = PyParser
-                    .reparseDocument(new ParserInfo(new Document(((Str) node).s),
+                    .parseFull(new ParserInfo(new Document(((Str) node).s),
                             IPythonNature.LATEST_GRAMMAR_PY3_VERSION, null));
             if (objects.error == null && objects.ast != null && objects.ast instanceof Module
                     && ((Module) objects.ast).body.length == 1 && ((Module) objects.ast).body[0] != null
@@ -2407,5 +2408,13 @@ public final class NodeUtils {
         // It seems it's in a limbo between the function name and the body,
         // so, just say that it's inside.
         return true;
+    }
+
+    public static boolean isStaticMethodDecoratorName(String rep) {
+        return "staticmethod".equals(rep) || "abstractstaticmethod".equals(rep);
+    }
+
+    public static boolean isClassMethodDecoratorName(String rep) {
+        return "classmethod".equals(rep) || "abstractclassmethod".equals(rep);
     }
 }

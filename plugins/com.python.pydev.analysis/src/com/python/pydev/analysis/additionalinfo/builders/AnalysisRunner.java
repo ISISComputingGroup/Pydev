@@ -49,6 +49,7 @@ public class AnalysisRunner {
     public static final String MYPY_PROBLEM_MARKER = IMiscConstants.MYPY_PROBLEM_MARKER;
     public static final String FLAKE8_PROBLEM_MARKER = IMiscConstants.FLAKE8_PROBLEM_MARKER;
     public static final String RUFF_PROBLEM_MARKER = IMiscConstants.RUFF_PROBLEM_MARKER;
+    public static final String PYRIGHT_PROBLEM_MARKER = IMiscConstants.PYRIGHT_PROBLEM_MARKER;
 
     /**
      * do we want to debug this class?
@@ -137,6 +138,14 @@ public class AnalysisRunner {
         } catch (CoreException e3) {
             Log.log(e3);
         }
+
+        try {
+            if (resource != null) {
+                resource.deleteMarkers(PYRIGHT_PROBLEM_MARKER, false, IResource.DEPTH_ZERO);
+            }
+        } catch (CoreException e3) {
+            Log.log(e3);
+        }
     }
 
     /**
@@ -146,12 +155,13 @@ public class AnalysisRunner {
      * @param document the document
      * @param messages the messages to add
      * @param monitor monitor to check if we should stop the process.
+     * @param markerHandler
      * @param existing these are the existing markers. After this method, the list will contain only the ones that
      * should be removed.
      * @return
      */
     public List<MarkerInfo> setMarkers(IResource resource, IDocument document, IMessage[] messages,
-            IProgressMonitor monitor) {
+            IProgressMonitor monitor, IMarkerHandler markerHandler) {
         if (resource == null) {
             return null;
         }
@@ -164,7 +174,7 @@ public class AnalysisRunner {
                 return null;
             }
 
-            PyMarkerUtils.replaceMarkers(lst, resource, AnalysisRunner.PYDEV_ANALYSIS_PROBLEM_MARKER, true, monitor);
+            markerHandler.replaceMarkers(lst, resource, AnalysisRunner.PYDEV_ANALYSIS_PROBLEM_MARKER, true, monitor);
             //timer.printDiff("Time to put markers: "+lst.size());
             return lst;
         } catch (Exception e) {
@@ -173,7 +183,8 @@ public class AnalysisRunner {
         return null;
     }
 
-    public ArrayList<MarkerInfo> generateMarkers(IDocument document, IMessage[] messages, IProgressMonitor monitor) {
+    public static ArrayList<MarkerInfo> generateMarkers(IDocument document, IMessage[] messages,
+            IProgressMonitor monitor) {
         ArrayList<MarkerInfo> lst = new ArrayList<MarkerInfo>();
         //add the markers... the id is put as additional info for it
         for (IMessage m : messages) {

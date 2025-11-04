@@ -35,6 +35,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.SafeRunner;
@@ -313,6 +314,45 @@ public class InterpreterInfo implements IInterpreterInfo {
         return this.executableOrJar.hashCode();
     }
 
+    public static class HelperToComputeIfPathIsInInterpreter {
+
+        Set<IPath> pythonHomePaths = new HashSet<>();
+        private DefaultPathsForInterpreterInfo defaultPaths;
+
+        public void setPythonExecutable(String infoExecutable) {
+            File pythonExecutableFile = new File(infoExecutable);
+            File pythonHome = pythonExecutableFile.getParentFile();
+            if (pythonHome != null) {
+                if (new File(pythonHome, "pyenv.cfg").exists()) {
+                    pythonHome = pythonHome.getParentFile();
+                }
+                pythonHomePaths.add(Path.fromOSString(pythonHome.toString()));
+            }
+
+        }
+
+        public HelperToComputeIfPathIsInInterpreter() {
+            boolean resolvingInterpreter = true;
+            defaultPaths = new DefaultPathsForInterpreterInfo(
+                    resolvingInterpreter);
+
+        }
+
+        public boolean isInterpreterPath(String data) {
+            if (!defaultPaths.forceDeselect(data)) { // It's directly a project source folder (don't add it).
+                // If it's site-package, in python home or not under a source folder add it.
+                if (data.contains("site-packages")
+                        || (DefaultPathsForInterpreterInfo
+                                .isChildOfRootPath(data, pythonHomePaths))
+                        || defaultPaths.selectByDefault(data)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+    }
+
     /**
      *
      * @param received
@@ -371,7 +411,7 @@ public class InterpreterInfo implements IInterpreterInfo {
                     List<String> predefinedPaths = new ArrayList<String>();
                     Properties stringSubstitutionVars = new Properties();
 
-                    DefaultPathsForInterpreterInfo defaultPaths = new DefaultPathsForInterpreterInfo();
+                    HelperToComputeIfPathIsInInterpreter helper = new HelperToComputeIfPathIsInInterpreter();
 
                     for (int j = 0; j < xmlNodes.getLength(); j++) {
                         Node xmlChild = xmlNodes.item(j);
@@ -385,6 +425,7 @@ public class InterpreterInfo implements IInterpreterInfo {
 
                         } else if ("executable".equals(name)) {
                             infoExecutable = data;
+                            helper.setPythonExecutable(infoExecutable);
 
                         } else if ("vmArgs".equals(name)) {
                             infoVmArgs = data;
@@ -400,7 +441,7 @@ public class InterpreterInfo implements IInterpreterInfo {
                             Node pathIncludeItem = attributes.getNamedItem("path");
 
                             if (pathIncludeItem != null) {
-                                if (defaultPaths.exists(data)) {
+                                if (DefaultPathsForInterpreterInfo.exists(data)) {
                                     //The python backend is expected to put path='ins' or path='out'
                                     //While our own toString() is not expected to do that.
                                     //This is probably not a very good heuristic, but it maps the current state of affairs.
@@ -408,8 +449,8 @@ public class InterpreterInfo implements IInterpreterInfo {
                                     if (askUserInOutPath) {
                                         toAsk.add(data);
                                     }
-                                    //Select only if path is not child of a root path
-                                    if (defaultPaths.selectByDefault(data)) {
+
+                                    if (helper.isInterpreterPath(data)) {
                                         selection.add(data);
                                     }
                                 }
@@ -1719,7 +1760,7 @@ public class InterpreterInfo implements IInterpreterInfo {
         if (this.activateCondaEnv) {
             File condaPrefix = this.getCondaPrefix();
             if (condaPrefix == null) {
-                Log.log("Unable to find conda prefix for: " + this.getExecutableOrJar());
+                Log.logInfo("Unable to find conda prefix for: " + this.getExecutableOrJar());
             } else if (condaPrefix.exists()) {
                 try {
                     Map<String, String> condaEnv = this.condaEnvCache;

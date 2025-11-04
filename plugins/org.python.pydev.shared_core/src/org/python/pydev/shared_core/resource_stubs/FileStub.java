@@ -11,6 +11,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
@@ -29,10 +30,10 @@ import org.python.pydev.shared_core.string.StringUtils;
 
 public class FileStub extends AbstractIFileStub implements IFile {
 
-    private IProjectStub project;
+    private IProject project;
     protected File file;
 
-    public FileStub(IProjectStub project, File file) {
+    public FileStub(IProject project, File file) {
         this.project = project;
         this.file = file;
     }
@@ -40,6 +41,21 @@ public class FileStub extends AbstractIFileStub implements IFile {
     @Override
     public boolean exists() {
         return file.isFile();
+    }
+
+    @Override
+    public URI getLocationURI() {
+        return file.toURI();
+    }
+
+    @Override
+    public boolean isAccessible() {
+        return file.exists();
+    }
+
+    @Override
+    public IPath getLocation() {
+        return Path.fromOSString(file.toString());
     }
 
     @Override
@@ -59,7 +75,7 @@ public class FileStub extends AbstractIFileStub implements IFile {
 
     @Override
     public IContainer getParent() {
-        return project.getFolder(this.file.getParentFile());
+        return new FolderStub(project, file.getParentFile());
     }
 
     @Override
@@ -68,7 +84,7 @@ public class FileStub extends AbstractIFileStub implements IFile {
             FileTime ret = Files.getLastModifiedTime(this.file.toPath());
             return ret.to(TimeUnit.NANOSECONDS);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            return -1; // File does not exist.
         }
     }
 
@@ -99,9 +115,12 @@ public class FileStub extends AbstractIFileStub implements IFile {
 
     @Override
     public IPath getFullPath() {
-        IPath projectPath = Path.fromOSString(FileUtils.getFileAbsolutePath(project.getProjectRoot()));
+        IPath projectPath = project.getLocation();
         IPath filePath = Path.fromOSString(FileUtils.getFileAbsolutePath(file));
-        return filePath.makeRelativeTo(projectPath);
+        IPath relativeToProject = filePath.makeRelativeTo(projectPath);
+        // Important: the full path is relative to the workspace, so, we need to
+        // add the project there too.
+        return new Path(this.project.getName()).append(relativeToProject);
     }
 
     @Override

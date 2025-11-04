@@ -17,7 +17,7 @@ from pathlib import Path
 import sys
 import subprocess
 
-_VERSION = '11.0.3'
+_VERSION = '13.1.0'
 
 _pydev_root = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -35,17 +35,39 @@ def _create_temp(contents: str, suffix: str) -> str:
         batch_file_path = batch_file.name
         # Write batch commands to the temporary file
         batch_file.write(contents.encode('utf-8'))
+
+    if sys.platform != "win32":
+        os.chmod(batch_file_path, 0o744)
     return batch_file_path
 
 
-def _cmd(batch_commands:str, cwd=None):
-    import subprocess
+def _cmd(batch_commands:str, cwd=None, env=None):
+    use_env = os.environ.copy()
+    if env:
+        use_env.update(env)
 
-    batch_file_path = _create_temp(batch_commands, ".bat")
-    try:
-        subprocess.run(['cmd', '/c', batch_file_path], input=b'\n', check=True, cwd=cwd)
-    finally:
-        os.remove(batch_file_path)
+    if 'JAVA_HOME' in use_env:
+        print('using JAVA_HOME:', use_env['JAVA_HOME'])
+
+    if sys.platform == "win32":
+        batch_file_path = _create_temp(batch_commands, ".bat")
+        print(batch_commands)
+        try:
+            subprocess.run(
+                ["cmd", "/c", batch_file_path], input=b"\n", check=True, cwd=cwd, env=use_env
+            )
+        finally:
+            os.remove(batch_file_path)
+    else:
+        batch_file_path = _create_temp(batch_commands, ".sh")
+        print(batch_commands)
+        try:
+            args = ['bash', batch_file_path]
+            subprocess.run(args, input=b"\n", check=True, cwd=cwd, env=use_env)
+        except:
+            print("Failed running: " + subprocess.list2cmdline(args), file=sys.stderr)
+        finally:
+            os.remove(batch_file_path)
 
 
 def update_pydevd_bins():
@@ -130,30 +152,49 @@ def write_and_exit(msg):
     sys.exit(1)
 
 
-def build_pydev_in_build_dir():
-    if 'SIGN_KEYSTORE' not in os.environ:
-        write_and_exit('SIGN_KEYSTORE not defined in the os.environ.')
-
+if sys.platform == "win32":
+    JAVA_HOME = "D:/bin/jdk-17.0.8.1+1"
+    MAVEN_BIN = "X:/liclipsews/maven/apache-maven-3.9.5/bin"
     BUILD_DIR = 'X:/pydev_build/build_dir'
     BASE_LOCAL_PYDEV_GIT = 'X:/liclipsews/liclipsews/Pydev'  # git://github.com/fabioz/Pydev.git could be used to build with the repo.
-    JAVA_HOME = 'D:/bin/jdk-17.0.8.1+1'
-    MAVEN_BIN = 'X:/liclipsews/maven/apache-maven-3.9.5/bin'
+else:
+    JAVA_HOME = "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home"
+    MAVEN_BIN = os.path.expanduser("~/Desktop/dev/liclipsews/maven/apache-maven-3.9.9/bin")
+    BUILD_DIR = os.path.expanduser("~/Desktop/dev/build-pydev")
+    BASE_LOCAL_PYDEV_GIT = os.path.expanduser('~/Desktop/dev/liclipsews/liclipsews/Pydev')  # git://github.com/fabioz/Pydev.git could be used to build with the repo.
+
+def build_pydev_in_build_dir(pydevd_binaries='true'):
+    pydevd_binaries = 0 if str(pydevd_binaries).lower() in ('0', 'false', 'f') else 1
+    if 'SIGN_KEYSTORE' not in os.environ:
+        if sys.platform == 'win32':
+            write_and_exit('SIGN_KEYSTORE not defined in the os.environ.')
+
+
+    build_binaries_instructions = ''
+    if pydevd_binaries:
+        if sys.platform != 'win32':
+            raise AssertionError('pydev binaries currently only supported for windows')
+
+        build_binaries_instructions = '''
+set PYTHONPATH=%BUILD_DIR%/Pydev/plugins/org.python.pydev.core/pysrc
+set FORCE_PYDEVD_VC_VARS=C:/Program Files (x86)/Microsoft Visual Studio/2017/BuildTools/VC/Auxiliary/Build/vcvars64.bat
+python %BUILD_DIR%/Pydev/plugins/org.python.pydev.core/pysrc/build_tools/build.py
+python %BUILD_DIR%/Pydev/plugins/org.python.pydev.core/pysrc/build_tools/build_binaries_windows.py
+'''
 
     os.makedirs(BUILD_DIR, exist_ok=True)
-    _cmd(rf'''
-@echo off
-set BRANCH=master
 
-set JAVA_HOME={JAVA_HOME}
-set MAVEN_BIN={MAVEN_BIN}
-set BUILD_DIR={BUILD_DIR}
-SET MAVEN_OPTS=-Xmx1024m
+    env = {
+        'BRANCH': 'master',
+        'JAVA_HOME': JAVA_HOME,
+        'MAVEN_BIN': MAVEN_BIN,
+        'BUILD_DIR': BUILD_DIR,
+        'MAVEN_OPTS':'-Xmx1024m',
+        'PATH': os.environ['PATH'] + os.path.pathsep + MAVEN_BIN + os.path.pathsep + JAVA_HOME
+    }
 
-set PATH=%MAVEN_BIN%;%PATH%
-set PATH=%JAVA_HOME%/bin;%PATH%
-set PATH="C:/Program Files/Git/bin/";%PATH%
-
-cd %BUILD_DIR%
+    if sys.platform == 'win32':
+        contents = rf'''
 git clone {BASE_LOCAL_PYDEV_GIT}
 cd Pydev
 git reset --hard
@@ -162,18 +203,38 @@ git checkout -f
 git remote update
 git fetch
 git checkout %BRANCH%
-git pull origin %BRANCH%
+git fetch origin %BRANCH%
+git reset --hard origin/%BRANCH%
 git submodule foreach --recursive git reset --hard
 git submodule foreach --recursive git clean -f -d -x
 git submodule update --init --recursive
 
-set PYTHONPATH=%BUILD_DIR%/Pydev/plugins/org.python.pydev.core/pysrc
-set FORCE_PYDEVD_VC_VARS=C:/Program Files (x86)/Microsoft Visual Studio/2017/BuildTools/VC/Auxiliary/Build/vcvars64.bat
-python %BUILD_DIR%/Pydev/plugins/org.python.pydev.core/pysrc/build_tools/build.py
-python %BUILD_DIR%/Pydev/plugins/org.python.pydev.core/pysrc/build_tools/build_binaries_windows.py
+{build_binaries_instructions}
 
 mvn install -Dsign-release=true
-''', cwd=BUILD_DIR)
+'''
+    else:
+        contents = rf'''
+git clone {BASE_LOCAL_PYDEV_GIT}
+cd Pydev
+git reset --hard
+git clean -f -d -x
+git checkout -f
+git remote update
+git fetch
+git checkout $BRANCH
+git fetch origin $BRANCH
+git reset --hard origin/$BRANCH
+git submodule foreach --recursive git reset --hard
+git submodule foreach --recursive git clean -f -d -x
+git submodule update --init --recursive
+
+{build_binaries_instructions}
+
+mvn install -Dmaven.test.skip
+
+'''
+    _cmd(contents, cwd=BUILD_DIR, env=env)
 
 
 def copy_and_zips():
@@ -253,6 +314,43 @@ def add_to_github():
     subprocess.check_call([sys.executable, r'X:\release_tools\convert_to_github.py', _VERSION], env=env)
     import webbrowser
     webbrowser.open(rf'''https://github.com/fabioz/Pydev/releases/new?tag=pydev_{_VERSION.replace('.', '_')}''')
+
+# /*[[[cog
+#  # Note: run
+#  # python -m dev codegen
+#  # to regenerate
+#  from codegen_helper import python_versions_underscore
+#
+#  i = 98
+#  for version in python_versions_underscore:
+#      i += 1
+#      constant_name = f'GRAMMAR_PYTHON_VERSION_{version}'
+#      cog.outl(f'public static final int {constant_name} = {i};')
+#
+#  ]]]*/
+#  /*[[[end]]]*/
+
+
+def codegen():
+    print('codegen')
+    try:
+        import cogapp
+    except ImportError:
+        raise RuntimeError('Missing "pip install cogapp"')
+    for f in [
+        'plugins/org.python.pydev.core/src/org/python/pydev/core/IGrammarVersionProvider.java',
+        'plugins/org.python.pydev.ast/src/org/python/pydev/plugin/nature/PythonNature.java',
+        'plugins/org.python.pydev.parser/src/org/python/pydev/parser/PyParser.java',
+        'plugins/org.python.pydev.core/src/org/python/pydev/core/IPythonNature.java',
+        ]:
+        f1 = _pydev_root / f
+        assert f1.exists(), f'{f1} does not exist'
+        args: list[str] = ['', '-r', str(f1)]
+
+        retcode = cogapp.Cog().main(args)
+        if retcode != 0:
+            sys.stderr.write('Error with cog!')
+            sys.exit(retcode)
 
 
 def _gen_fire_args() -> dict[str, Callable]:

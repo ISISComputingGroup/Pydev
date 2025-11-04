@@ -28,6 +28,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.text.BadLocationException;
+import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IDocumentExtension4;
 import org.eclipse.jface.text.IRegion;
@@ -54,6 +55,7 @@ import org.python.pydev.parser.jython.Token;
 import org.python.pydev.parser.jython.TokenMgrError;
 import org.python.pydev.parser.jython.ast.Module;
 import org.python.pydev.parser.jython.ast.stmtType;
+import org.python.pydev.parser.jython.ast.factory.PyAstFactory;
 import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.model.ErrorDescription;
@@ -82,7 +84,7 @@ import org.python.pydev.shared_core.structure.Tuple3;
  */
 
 @SuppressWarnings("restriction")
-public class PyParser extends BaseParser implements IPyParser {
+public final class PyParser extends BaseParser implements IPyParser {
 
     /**
      * Just for tests: show whenever we're not able to parse some file.
@@ -105,31 +107,41 @@ public class PyParser extends BaseParser implements IPyParser {
     private final IGrammarVersionProvider grammarVersionProvider;
 
     public static String getGrammarVersionStr(int grammarVersion) {
-        if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_5) {
-            return "grammar: Python 3.5";
+        switch (grammarVersion) {
+            /*[[[cog
+            # Note: run
+            # python -m dev codegen
+            # to regenerate
+            from codegen_helper import python_versions_base, python_versions_underscore
+            
+            for version_under, version_base in zip(python_versions_underscore, python_versions_base):
+                constant_name = f'GRAMMAR_PYTHON_VERSION_{version_under}'
+                cog.outl(f'case IGrammarVersionProvider.{constant_name}:')
+                cog.outl(f'    return "grammar: Python {version_base}";')
+            ]]]*/
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_5:
+                return "grammar: Python 3.5";
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_6:
+                return "grammar: Python 3.6";
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_7:
+                return "grammar: Python 3.7";
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_8:
+                return "grammar: Python 3.8";
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_9:
+                return "grammar: Python 3.9";
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_10:
+                return "grammar: Python 3.10";
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_11:
+                return "grammar: Python 3.11";
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_12:
+                return "grammar: Python 3.12";
+            case IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_13:
+                return "grammar: Python 3.13";
+            /*[[[end]]]*/
+        }
 
-        } else if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_6) {
-            return "grammar: Python 3.6";
-
-        } else if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_7) {
-            return "grammar: Python 3.7";
-
-        } else if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_8) {
-            return "grammar: Python 3.8";
-
-        } else if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_9) {
-            return "grammar: Python 3.9";
-
-        } else if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_10) {
-            return "grammar: Python 3.10";
-
-        } else if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_11) {
-            return "grammar: Python 3.11";
-
-        } else if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_12) {
-            return "grammar: Python 3.12";
-
-        } else if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_CYTHON) {
+        // If it still didn't return...
+        if (grammarVersion == IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_CYTHON) {
             return "grammar: Cython";
 
         } else {
@@ -291,7 +303,7 @@ public class PyParser extends BaseParser implements IPyParser {
             version = IGrammarVersionProvider.LATEST_GRAMMAR_PY3_VERSION;
         }
         long documentTime = System.currentTimeMillis();
-        ParseOutput obj = reparseDocument(new ParserInfo(document, version, true, additionalGrammarsToCheck));
+        ParseOutput obj = parseFull(new ParserInfo(document, version, true, additionalGrammarsToCheck));
 
         IFile original = null;
         IAdaptable adaptable = null;
@@ -366,6 +378,34 @@ public class PyParser extends BaseParser implements IPyParser {
     }
 
     //static methods that can be used to get the ast (and error if any) --------------------------------------
+
+    public static SimpleNode parseSimple(String source, IGrammarVersionProvider versionProvider)
+            throws ParseException, MisconfigurationException {
+        return parseSimple(new Document(source), versionProvider);
+    }
+
+    public static Module parseSimple(IDocument doc, IGrammarVersionProvider versionProvider) throws ParseException,
+            MisconfigurationException {
+        ParseOutput objects = parseFull(new ParserInfo(doc, versionProvider));
+        Throwable exception = objects.error;
+
+        if (exception != null) {
+            /* We try to get rid of the 'Throwable' exception, if possible */
+            if (exception instanceof ParseException) {
+                throw (ParseException) exception;
+            } else if (exception instanceof TokenMgrError) {
+                /* Error from Lexer */
+                throw new ParseException(exception.toString());
+            } else {
+                throw new RuntimeException(exception);
+            }
+        }
+
+        if (objects.error != null) {
+            throw new RuntimeException(objects.error);
+        }
+        return (Module) objects.ast;
+    }
 
     public final static class ParserInfo implements IGrammarVersionProvider {
         public IDocument document;
@@ -502,14 +542,32 @@ public class PyParser extends BaseParser implements IPyParser {
         IGrammar grammar;
         FastCharStream in = new FastCharStream(charArray);
         switch (grammarVersion) {
+            /*[[[cog
+            # Note: run
+            # python -m dev codegen
+            # to regenerate
+            from codegen_helper import python_versions_base, python_versions_underscore, grammar_parser_map
+            
+            for version_under, version_base in zip(python_versions_underscore, python_versions_base):
+                constant_name = f'GRAMMAR_PYTHON_VERSION_{version_under}'
+                cog.outl(f'case IPythonNature.{constant_name}:')
+            
+                clsname = grammar_parser_map[version_under]
+                cog.outl(f'    grammar = new {clsname}(generateTree, in);')
+                cog.outl(f'    break;')
+            ]]]*/
             case IPythonNature.GRAMMAR_PYTHON_VERSION_3_5:
                 grammar = new PythonGrammar30(generateTree, in);
                 break;
             case IPythonNature.GRAMMAR_PYTHON_VERSION_3_6:
+                grammar = new PythonGrammar36(generateTree, in);
+                break;
             case IPythonNature.GRAMMAR_PYTHON_VERSION_3_7:
                 grammar = new PythonGrammar36(generateTree, in);
                 break;
             case IPythonNature.GRAMMAR_PYTHON_VERSION_3_8:
+                grammar = new PythonGrammar38(generateTree, in);
+                break;
             case IPythonNature.GRAMMAR_PYTHON_VERSION_3_9:
                 grammar = new PythonGrammar38(generateTree, in);
                 break;
@@ -522,6 +580,10 @@ public class PyParser extends BaseParser implements IPyParser {
             case IPythonNature.GRAMMAR_PYTHON_VERSION_3_12:
                 grammar = new PythonGrammar312(generateTree, in);
                 break;
+            case IPythonNature.GRAMMAR_PYTHON_VERSION_3_13:
+                grammar = new PythonGrammar312(generateTree, in);
+                break;
+            /*[[[end]]]*/
             //case CYTHON: not treated here (only in reparseDocument).
             default:
                 throw new RuntimeException("The grammar specified for parsing is not valid: " + grammarVersion);
@@ -546,11 +608,16 @@ public class PyParser extends BaseParser implements IPyParser {
         return new Tuple<SimpleNode, IGrammar>(grammar.file_input(), grammar); // parses the file
     }
 
+    public static ParseOutput parseFull(IDocument doc, IGrammarVersionProvider versionProvider)
+            throws MisconfigurationException {
+        return parseFull(new ParserInfo(doc, versionProvider));
+    }
+
     /**
      * @return a tuple with the SimpleNode root(if parsed) and the error (if any).
      *         if we are able to recover from a reparse, we have both, the root and the error.
      */
-    public static ParseOutput reparseDocument(ParserInfo info) {
+    public static ParseOutput parseFull(ParserInfo info) {
         if (info.grammarVersion == IPythonNature.GRAMMAR_PYTHON_VERSION_CYTHON) {
             return createCythonAst(info);
         }
@@ -565,7 +632,7 @@ public class PyParser extends BaseParser implements IPyParser {
 
         if (startDoc.trim().length() == 0) {
             //If empty, don't bother to parse!
-            return new ParseOutput(new Module(new stmtType[0]), null, modifiedTime);
+            return new ParseOutput(new Module(PyAstFactory.EMPTY_STMT_TYPE), null, modifiedTime);
         }
         Set<Integer> parsedVersions = new HashSet<>();
         char[] charArray;

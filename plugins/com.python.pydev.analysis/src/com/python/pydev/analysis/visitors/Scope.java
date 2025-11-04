@@ -21,6 +21,7 @@ import org.python.pydev.core.IterTokenEntry;
 import org.python.pydev.core.TokensList;
 import org.python.pydev.parser.jython.SimpleNode;
 import org.python.pydev.parser.jython.ast.If;
+import org.python.pydev.parser.jython.ast.Subscript;
 import org.python.pydev.parser.jython.ast.TryExcept;
 import org.python.pydev.shared_core.string.FastStringBuffer;
 import org.python.pydev.shared_core.structure.FastStack;
@@ -297,6 +298,10 @@ public final class Scope implements Iterable<ScopeItems> {
         if (m.isInTypeChecking()) {
             newFound.setUsed(true); // Don't report imports inside of typing.TYPE_CHECKING as unused.
         }
+        if (inAssignWithoutValue > 0) {
+            newFound.setUsed(true); // Don't report `v: int` as unused
+            newFound.setEphemeral(true);
+        }
         if (isReimport) {
             if (m.getTryExceptImportError() == null) {
                 //we don't want to add reimport messages if we're within a try..except
@@ -520,6 +525,30 @@ public final class Scope implements Iterable<ScopeItems> {
             return null;
         }
         return scope.get(scope.size() - 2);
+    }
+
+    public final FastStack<Subscript> subscripts = new FastStack<>(3);
+
+    public int inAssignWithoutValue;
+
+    public void pushSubscript(Subscript node) {
+        subscripts.push(node);
+
+    }
+
+    public void popSubscript(Subscript node) {
+        subscripts.pop();
+    }
+
+    public boolean isInGobalScope() {
+        for (ScopeItems s : this.scope) {
+            // Inside a class definition is still considered "global" only
+            // inside a method it's not global.
+            if ((s.getScopeType() & (SCOPE_TYPE_METHOD | SCOPE_TYPE_LAMBDA)) != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
 }

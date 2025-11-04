@@ -77,7 +77,7 @@ public class PyParserTest extends PyParserTestBase {
         }
 
         PyParser.ParserInfo parserInfo = new PyParser.ParserInfo(doc, IPythonNature.LATEST_GRAMMAR_PY2_VERSION, null);
-        ParseOutput reparseDocument = PyParser.reparseDocument(parserInfo);
+        ParseOutput reparseDocument = PyParser.parseFull(parserInfo);
         assertTrue(reparseDocument.ast == null);
         assertTrue(reparseDocument.error != null);
     }
@@ -816,6 +816,23 @@ public class PyParserTest extends PyParserTestBase {
             @Override
             public Boolean call(Integer grammar) {
                 parseILegalDocSuccessfully(s);
+                return true;
+            }
+        });
+    }
+
+    public void testParserSlash() throws Throwable {
+        final String s = "" +
+                "async def foo(a, /, b): pass\n";
+
+        checkWithAllGrammars(new ICallback<Boolean, Integer>() {
+
+            @Override
+            public Boolean call(Integer arg) {
+                if (arg <= IGrammarVersionProvider.GRAMMAR_PYTHON_VERSION_3_8) {
+                    return true;
+                }
+                parseLegalDocStr(s);
                 return true;
             }
         });

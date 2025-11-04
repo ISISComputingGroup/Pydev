@@ -14,12 +14,12 @@
 * Contributors:
 *     Fabio Zadrozny <fabiofz@gmail.com> - initial implementation
 ******************************************************************************/
-/* 
+/*
  * Copyright (C) 2006, 2007  Dennis Hunziker, Ueli Kistler
  * Copyright (C) 2007  Reto Schuettel, Robin Stocker
  *
  * IFS Institute for Software, HSR Rapperswil, Switzerland
- * 
+ *
  */
 
 package org.python.pydev.refactoring.coderefactoring.extractmethod;
@@ -30,15 +30,14 @@ import java.util.List;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
+import org.python.pydev.ast.adapters.IClassDefAdapter;
+import org.python.pydev.ast.adapters.ModuleAdapter;
+import org.python.pydev.ast.adapters.visitors.selection.SelectionException;
+import org.python.pydev.ast.refactoring.RefactoringInfo;
+import org.python.pydev.ast.refactoring.RefactoringInfo.SelectionComputer;
+import org.python.pydev.ast.refactoring.RefactoringInfo.SelectionComputer.SelectionComputerKind;
 import org.python.pydev.core.log.Log;
-import org.python.pydev.refactoring.ast.adapters.IClassDefAdapter;
-import org.python.pydev.refactoring.ast.adapters.ModuleAdapter;
-import org.python.pydev.refactoring.ast.visitors.VisitorFactory;
-import org.python.pydev.refactoring.ast.visitors.selection.SelectionException;
 import org.python.pydev.refactoring.core.base.AbstractPythonRefactoring;
-import org.python.pydev.refactoring.core.base.RefactoringInfo;
-import org.python.pydev.refactoring.core.base.RefactoringInfo.SelectionComputer;
-import org.python.pydev.refactoring.core.base.RefactoringInfo.SelectionComputer.SelectionComputerKind;
 import org.python.pydev.refactoring.core.change.IChangeProcessor;
 import org.python.pydev.refactoring.messages.Messages;
 
@@ -70,7 +69,8 @@ public class ExtractMethodRefactoring extends AbstractPythonRefactoring {
         }
 
         try {
-            VisitorFactory.validateSelection(selectionComputer.selectionModuleAdapter);
+            org.python.pydev.ast.adapters.visitors.VisitorFactory
+                    .validateSelection(selectionComputer.selectionModuleAdapter);
         } catch (SelectionException e) {
             status.addFatalError(e.getMessage());
             return status;

@@ -1,16 +1,16 @@
 package org.python.pydev.editor.codecompletion.proposals;
 
+import java.io.File;
 import java.util.List;
 
-import org.eclipse.core.resources.IMarker;
 import org.eclipse.jface.text.IRegion;
 import org.eclipse.jface.text.contentassist.IContextInformation;
-import org.eclipse.jface.text.source.ISourceViewer;
 import org.eclipse.jface.text.templates.Template;
 import org.eclipse.jface.text.templates.TemplateContext;
 import org.eclipse.swt.widgets.Display;
 import org.python.pydev.ast.refactoring.RefactoringRequest;
 import org.python.pydev.core.ICompletionRequest;
+import org.python.pydev.core.IMarkerInfoForAnalysis;
 import org.python.pydev.core.IPyEdit;
 import org.python.pydev.core.IToken;
 import org.python.pydev.core.ShellId;
@@ -22,19 +22,24 @@ import org.python.pydev.core.interactive_console.IScriptConsoleViewer;
 import org.python.pydev.core.proposals.ICompletionProposalFactory;
 import org.python.pydev.editor.codecompletion.PyTemplateProposal;
 import org.python.pydev.editor.codefolding.PyCalltipsContextInformationFromIToken;
+import org.python.pydev.editor.correctionassist.AssistAssignCompletionProposal;
 import org.python.pydev.editor.correctionassist.FixCompletionProposal;
 import org.python.pydev.editor.correctionassist.IgnoreCompletionProposal;
 import org.python.pydev.editor.correctionassist.IgnoreCompletionProposalInSameLine;
 import org.python.pydev.editor.correctionassist.IgnoreFlake8CompletionProposalInSameLine;
 import org.python.pydev.editor.correctionassist.IgnorePyLintCompletionProposalInSameLine;
 import org.python.pydev.editor.correctionassist.docstrings.AssistDocstringCompletionProposal;
-import org.python.pydev.editor.correctionassist.heuristics.AssistAssignCompletionProposal;
 import org.python.pydev.shared_core.code_completion.ICompletionProposalHandle;
 import org.python.pydev.shared_core.code_completion.IPyCompletionProposal.ICompareContext;
 import org.python.pydev.shared_core.image.IImageHandle;
 import org.python.pydev.shared_core.model.ISimpleNode;
 import org.python.pydev.shared_core.string.FastStringBuffer;
 import org.python.pydev.shared_ui.ImageCache;
+
+import com.python.pydev.analysis.refactoring.tdd.AbstractPyCreateAction;
+import com.python.pydev.refactoring.tdd.completions.TddRefactorCompletion;
+import com.python.pydev.refactoring.tdd.completions.TddRefactorCompletionInInexistentModule;
+import com.python.pydev.refactoring.tdd.completions.TddRefactorCompletionInModule;
 
 public class DefaultCompletionProposalFactory implements ICompletionProposalFactory {
 
@@ -57,7 +62,7 @@ public class DefaultCompletionProposalFactory implements ICompletionProposalFact
             String replacementString, int replacementOffset, int replacementLength, int cursorPosition,
             IImageHandle image, String displayString, Object contextInformation,
             String additionalProposalInfo, int priority, IPyEdit edit, String line, PySelection ps, FormatStd format,
-            IMarker marker) {
+            IMarkerInfoForAnalysis marker) {
         return new IgnorePyLintCompletionProposalInSameLine(replacementString, replacementOffset, replacementLength,
                 cursorPosition, image, displayString, (IContextInformation) contextInformation, additionalProposalInfo,
                 priority, edit, line,
@@ -69,7 +74,7 @@ public class DefaultCompletionProposalFactory implements ICompletionProposalFact
             String replacementString, int replacementOffset, int replacementLength, int cursorPosition,
             IImageHandle image, String displayString, Object contextInformation,
             String additionalProposalInfo, int priority, IPyEdit edit, String line, PySelection ps, FormatStd format,
-            IMarker marker) {
+            IMarkerInfoForAnalysis marker) {
         return new IgnoreFlake8CompletionProposalInSameLine(replacementString, replacementOffset, replacementLength,
                 cursorPosition, image, displayString, (IContextInformation) contextInformation, additionalProposalInfo,
                 priority, edit, line,
@@ -104,12 +109,10 @@ public class DefaultCompletionProposalFactory implements ICompletionProposalFact
     @Override
     public ICompletionProposalHandle createAssistAssignCompletionProposal(String replacementString,
             int replacementOffset, int replacementLength, int cursorPosition, IImageHandle image, String displayString,
-            Object contextInformation, String additionalProposalInfo, int priority,
-            Object sourceViewer, ICompareContext compareContext) {
+            Object contextInformation, String additionalProposalInfo, int priority, IPyEdit edit) {
         return new AssistAssignCompletionProposal(replacementString, replacementOffset, replacementLength,
                 cursorPosition, image, displayString, (IContextInformation) contextInformation, additionalProposalInfo,
-                priority,
-                (ISourceViewer) sourceViewer, compareContext);
+                priority);
     }
 
     @Override
@@ -274,6 +277,44 @@ public class DefaultCompletionProposalFactory implements ICompletionProposalFact
             String importedToken, ImportHandleInfo importHandleInfo, IImageHandle iImageHandle, String displayString) {
         return new PyMoveImportsToLocalCompletionProposal((RefactoringRequest) refactoringRequest, importedToken,
                 importHandleInfo, iImageHandle, displayString);
+    }
+
+    @Override
+    public ICompletionProposalHandle createTddRefactorCompletion(String replacementString, IImageHandle image,
+            String displayString,
+            /*IContextInformation*/ Object contextInformation, String additionalProposalInfo, int priority,
+            IPyEdit edit,
+            int locationStrategy, List<String> parametersAfterCall, /*AbstractPyCreateAction*/ Object pyCreateAction,
+            PySelection ps) {
+        return new TddRefactorCompletion(replacementString, image, displayString,
+                (IContextInformation) contextInformation, additionalProposalInfo,
+                priority, edit, locationStrategy, parametersAfterCall, (AbstractPyCreateAction) pyCreateAction, ps);
+    }
+
+    @Override
+    public ICompletionProposalHandle createTddRefactorCompletionInModule(String replacementString, IImageHandle image,
+            String displayString,
+            /*IContextInformation*/ Object contextInformation, String additionalProposalInfo, int priority,
+            IPyEdit edit,
+            File module, List<String> parametersAfterCall, /*AbstractPyCreateAction*/ Object pyCreateAction,
+            PySelection ps,
+            int locationStrategy) {
+        return new TddRefactorCompletionInModule(replacementString, image, displayString,
+                (IContextInformation) contextInformation,
+                additionalProposalInfo, priority, edit, module, parametersAfterCall,
+                (AbstractPyCreateAction) pyCreateAction, ps,
+                locationStrategy);
+    }
+
+    @Override
+    public ICompletionProposalHandle createTddRefactorCompletionInInexistentModule(String replacementString,
+            IImageHandle image, String displayString, Object contextInformation, String additionalProposalInfo,
+            int priority, IPyEdit edit, File module, List<String> parametersAfterCall, Object pyCreateAction,
+            PySelection ps) {
+        return new TddRefactorCompletionInInexistentModule(replacementString, image, displayString,
+                (IContextInformation) contextInformation,
+                additionalProposalInfo, priority, edit, module, parametersAfterCall,
+                (AbstractPyCreateAction) pyCreateAction, ps);
     }
 
 }

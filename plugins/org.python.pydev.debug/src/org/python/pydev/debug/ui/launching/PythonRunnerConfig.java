@@ -192,7 +192,7 @@ public class PythonRunnerConfig {
     }
 
     private static StringSubstitution getStringSubstitution(IPythonNature nature) {
-        return new StringSubstitution(nature);
+        return new StringSubstitution(nature, true);
     }
 
     /**
@@ -529,6 +529,12 @@ public class PythonRunnerConfig {
         }
         envp = StringUtils.addString(envp,
                 "IDE_PROJECT_ROOTS=" + StringUtils.join(File.pathSeparator, ideProjectRoots));
+
+        if (DebugPrefsPage.getJustMyCode()) {
+            envp = StringUtils.addString(envp,
+                    "PYDEVD_FILTER_LIBRARIES=1");
+        }
+
         envp = StringUtils.addString(envp,
                 "PYDEVD_SHOW_COMPILE_CYTHON_COMMAND_LINE=True");
         this.pythonpathUsed = p;

@@ -196,15 +196,17 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
             Collection<String> addToMypyPath = new HashSet<String>();
             IModulesManager[] managersInvolved = nature.getAstManager().getModulesManager().getManagersInvolved(false);
             for (IModulesManager iModulesManager : managersInvolved) {
-                for (String s : StringUtils
-                        .split(iModulesManager.getNature().getPythonPathNature().getOnlyProjectPythonPathStr(true),
-                                "|")) {
+                for (String s : iModulesManager.getNature().getPythonPathNature().getOnlyProjectPythonPathStr(true,
+                        true)) {
                     if (!s.isEmpty()) {
                         addToMypyPath.add(s);
                     }
                 }
             }
+
+            String mypyPath = StringUtils.join(SimpleRunner.getPythonPathSeparator(), addToMypyPath);
             if (addToMypyPath.size() > 0) {
+                WriteToStreamHelper.write("MyPy: Using MYPYPATH:", out, mypyPath);
                 updateEnv = new ICallback<String[], String[]>() {
 
                     @Override
@@ -213,14 +215,14 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
                             // Update var
                             if (arg[i].startsWith("MYPYPATH=")) {
                                 arg[i] = arg[i] + SimpleRunner.getPythonPathSeparator()
-                                        + StringUtils.join(SimpleRunner.getPythonPathSeparator(), addToMypyPath);
+                                        + mypyPath;
                                 return arg;
                             }
                         }
 
                         // Create new var.
                         return ArrayUtils.concatArrays(arg, new String[] {
-                                "MYPYPATH=" + StringUtils.join(SimpleRunner.getPythonPathSeparator(), addToMypyPath) });
+                                "MYPYPATH=" + mypyPath });
                     }
                 };
             }
@@ -241,9 +243,9 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
                 }
                 cmdList.add(0, "mypy");
                 String[] args = cmdList.toArray(new String[0]);
-                WriteToStreamHelper.write("MyPy: Executing command line:", out, "python", "-m", args);
                 SimplePythonRunner runner = new SimplePythonRunner();
                 String[] parameters = SimplePythonRunner.preparePythonCallParameters(interpreter, "-m", args);
+                WriteToStreamHelper.write("MyPy: Executing command line:", out, StringUtils.join(" ", parameters));
 
                 Tuple<Process, String> r = runner.run(parameters, workingDir, nature, monitor, finalUpdateEnv);
                 return r.o1;
@@ -303,12 +305,12 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
             WriteToStreamHelper.write("Mypy: The stderr of the command line is:\n", out, errors);
         }
 
-        if (output.indexOf("Traceback (most recent call last):") != -1) {
+        if (logStream(output)) {
             Throwable e = new RuntimeException("Mypy ERROR: \n" + output);
             Log.log(e);
             return;
         }
-        if (errors.indexOf("Traceback (most recent call last):") != -1) {
+        if (logStream(errors)) {
             Throwable e = new RuntimeException("Mypy ERROR: \n" + errors);
             Log.log(e);
             return;
@@ -436,6 +438,12 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
                     messageInfo.column,
                     messageInfo.docLineContents, messageInfo.moduleFile, messageInfo.document);
         }
+    }
+
+    private boolean logStream(String output) {
+        // usage: mypy [-h] [-v] [-V] [more options; see below]
+        return output.contains("Traceback (most recent call last):")
+                || (output.contains("mypy: error: unrecognized arguments:") && output.contains("usage:"));
     }
 
     private static Pattern MYPY_MATCH_PATTERN1 = Pattern

@@ -28,8 +28,50 @@ public class PyParser312Test extends PyParserTestBase {
                 + "";
 
         // TODO: Support this!
-        //        SimpleNode ast = parseLegalDocStr(s);
+        // parseLegalDocStr(s);
 
     }
 
+    public void testTypeVarSyntaxClass() {
+        String s = """
+                class myclass[T, Y:str]:
+                    pass
+                """;
+        parseLegalDocStr(s);
+    }
+
+    public void testTypeVarSyntax() {
+        String s = """
+                def f312[T, Y:str](e: T) -> None: ...
+                """;
+        parseLegalDocStr(s);
+    }
+
+    public void testTypeVarSyntax2() {
+        String s = """
+                def f312[*X, **Y](e: T) -> None: ...
+                """;
+        parseLegalDocStr(s);
+    }
+
+    public void testTypeSyntax() {
+        String s = """
+                type Point[T, Y] = tuple[T, Y]
+                """;
+        parseLegalDocStr(s);
+    }
+
+    public void testTypeSyntax2() {
+        String s = """
+                type IntOrStr = int | str
+                """;
+        parseLegalDocStr(s);
+    }
+
+    public void testTypeNameStillValidSyntax() {
+        String s = """
+                print(type(int))
+                """;
+        parseLegalDocStr(s);
+    }
 }
