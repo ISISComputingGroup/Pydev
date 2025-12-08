@@ -20,11 +20,11 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.OperationCanceledException;
 import org.eclipse.jface.text.IDocument;
-import org.python.pydev.ast.analysis.IAnalysisPreferences;
 import org.python.pydev.ast.analysis.messages.IMessage;
 import org.python.pydev.ast.builder.PyDevBuilderVisitor;
 import org.python.pydev.ast.codecompletion.revisited.modules.SourceModule;
 import org.python.pydev.core.CheckAnalysisErrors;
+import org.python.pydev.core.IAnalysisPreferences;
 import org.python.pydev.core.IModule;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.MisconfigurationException;
@@ -34,7 +34,6 @@ import org.python.pydev.core.log.Log;
 import org.python.pydev.core.logging.DebugSettings;
 import org.python.pydev.parser.preferences.PyDevBuilderPreferences;
 import org.python.pydev.shared_core.callbacks.ICallback;
-import org.python.pydev.shared_core.markers.PyMarkerUtils;
 import org.python.pydev.shared_core.markers.PyMarkerUtils.MarkerInfo;
 import org.python.pydev.shared_core.resources.DocumentChanged;
 
@@ -55,6 +54,9 @@ import com.python.pydev.analysis.pylint.PyLintVisitorFactory;
 import com.python.pydev.analysis.ruff.OnlyRemoveMarkersRuffVisitor;
 import com.python.pydev.analysis.ruff.RuffVisitor;
 import com.python.pydev.analysis.ruff.RuffVisitorFactory;
+import com.python.pydev.analysis.pyright.OnlyRemoveMarkersPyrightVisitor;
+import com.python.pydev.analysis.pyright.PyrightVisitor;
+import com.python.pydev.analysis.pyright.PyrightVisitorFactory;
 
 /**
  * This class is used to do analysis on a thread, so that if an analysis is asked for some analysis that
@@ -69,6 +71,8 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
      */
     public static final List<ICallback<Object, IResource>> analysisBuilderListeners = new ArrayList<ICallback<Object, IResource>>();
 
+    private IMarkerHandler markerHandler = new DefaultMarkerHandler();
+
     // -------------------------------------------------------------------------------------------- ATTRIBUTES
 
     private IDocument document;
@@ -79,6 +83,7 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
     private IExternalCodeAnalysisVisitor mypyVisitor;
     private IExternalCodeAnalysisVisitor flake8Visitor;
     private IExternalCodeAnalysisVisitor ruffVisitor;
+    private IExternalCodeAnalysisVisitor pyrightVisitor;
 
     private boolean onlyRecreateCtxInsensitiveInfo;
 
@@ -106,7 +111,7 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
             boolean isFullBuild, String moduleName, boolean forceAnalysis, int analysisCause,
             IAnalysisBuilderRunnable oldAnalysisBuilderThread, IPythonNature nature, long documentTime,
             KeyForAnalysisRunnable key, long resourceModificationStamp,
-            List<IExternalCodeAnalysisVisitor> externalVisitors) {
+            List<IExternalCodeAnalysisVisitor> externalVisitors, IMarkerHandler markerHandler) {
         super(isFullBuild, moduleName, forceAnalysis, analysisCause, oldAnalysisBuilderThread, nature, documentTime,
                 key, resourceModificationStamp);
 
@@ -117,6 +122,7 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
         this.document = document;
         this.resource = resource;
         this.module = module;
+        this.markerHandler = markerHandler;
 
         if (externalVisitors.size() > 0) {
             this.allVisitors = externalVisitors.toArray(new IExternalCodeAnalysisVisitor[0]);
@@ -129,9 +135,11 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
                     this.flake8Visitor = visitor;
                 } else if (visitor instanceof OnlyRemoveMarkersRuffVisitor || visitor instanceof RuffVisitor) {
                     this.ruffVisitor = visitor;
+                } else if (visitor instanceof OnlyRemoveMarkersPyrightVisitor || visitor instanceof PyrightVisitor) {
+                    this.pyrightVisitor = visitor;
                 }
             }
-            if (pyLintVisitor == null || mypyVisitor == null || flake8Visitor == null || ruffVisitor == null) {
+            if (pyLintVisitor == null || mypyVisitor == null || flake8Visitor == null || ruffVisitor == null || pyrightVisitor == null) {
                 throw new AssertionError("All visitor types must be passed.");
             }
         } else {
@@ -139,8 +147,13 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
             this.mypyVisitor = MypyVisitorFactory.create(resource, document, module, internalCancelMonitor);
             this.flake8Visitor = Flake8VisitorFactory.create(resource, document, module, internalCancelMonitor);
             this.ruffVisitor = RuffVisitorFactory.create(resource, document, module, internalCancelMonitor);
+            this.pyrightVisitor = PyrightVisitorFactory.create(resource, document, module, internalCancelMonitor);
             this.allVisitors = new IExternalCodeAnalysisVisitor[] { this.pyLintVisitor, this.mypyVisitor,
-                    this.flake8Visitor, this.ruffVisitor };
+                    this.flake8Visitor, this.ruffVisitor, this.pyrightVisitor };
+        }
+
+        for (IExternalCodeAnalysisVisitor visitor : allVisitors) {
+            visitor.setMarkerHandler(markerHandler);
         }
 
         // Important: we can only update the index if it was a builder... if it was the parser,
@@ -246,12 +259,11 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
                             "Skipping: !makeAnalysis -- " + moduleName);
                 }
                 if (!anotherVisitorRequiresAnalysis) {
-                    AnalysisRunner.deleteMarkers(r);
+                    markerHandler.deleteAnalysisMarkers(r);
                     return;
                 } else {
                     // Only delete pydev markers (others will be deleted by the respective visitors later on).
-                    boolean onlyPydevAnalysisMarkers = true;
-                    AnalysisRunner.deleteMarkers(r, onlyPydevAnalysisMarkers);
+                    markerHandler.deleteOnlyPydevAnalysisMarkers(r);
                 }
             }
 
@@ -291,7 +303,7 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
                 //We don't want to check derived resources (but we want to remove any analysis messages that
                 //might be already there)
                 if (r != null) {
-                    AnalysisRunner.deleteMarkers(r);
+                    markerHandler.deleteAnalysisMarkers(r);
                 }
                 return;
             }
@@ -340,7 +352,8 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
                             || (analyzeOnlyActiveEditor
                                     && (!PyDevBuilderPreferences.getRemoveErrorsWhenEditorIsClosed() || OpenEditors
                                             .isEditorOpenForResource(r)))) {
-                        markersFromCodeAnalysis = runner.setMarkers(r, document, messages, this.internalCancelMonitor);
+                        markersFromCodeAnalysis = runner.setMarkers(r, document, messages, this.internalCancelMonitor,
+                                markerHandler);
                     } else {
                         if (DebugSettings.DEBUG_ANALYSIS_REQUESTS) {
                             org.python.pydev.shared_core.log.ToLogFile.toLogFile(this,
@@ -419,8 +432,7 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
                                 }
                             }
                         }
-                        PyMarkerUtils.replaceMarkers(markersFromVisitor, resource, problemMarker,
-                                true, this.internalCancelMonitor);
+                        replaceMarkers(problemMarker, markersFromVisitor);
                     } else {
                         visitor.deleteMarkers();
                     }
@@ -446,6 +458,11 @@ public class AnalysisBuilderRunnable extends AbstractAnalysisBuilderRunnable {
 
             dispose();
         }
+    }
+
+    private void replaceMarkers(String problemMarker, List<MarkerInfo> markersFromVisitor) {
+        markerHandler.replaceMarkers(markersFromVisitor, resource, problemMarker,
+                true, this.internalCancelMonitor);
     }
 
     /**

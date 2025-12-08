@@ -20,18 +20,18 @@ import org.python.pydev.shared_core.io.FileUtils;
 public class FolderStub extends AbstractIFolderStub implements IFolder {
 
     private File folder;
-    private IProjectStub project;
+    private IProject project;
     private IContainer parent;
 
-    public FolderStub(IProjectStub stub, File parentFile) {
+    public FolderStub(IProject stub, File parentFile) {
         this(stub, null, parentFile);
     }
 
-    public FolderStub(IProjectStub stub, IContainer parent, File parentFile) {
+    public FolderStub(IProject stub, IContainer parent, File parentFile) {
         this(stub, parent, parentFile, true);
     }
 
-    public FolderStub(IProjectStub stub, IContainer parent, File parentFile, boolean mustExist) {
+    public FolderStub(IProject stub, IContainer parent, File parentFile, boolean mustExist) {
         if (mustExist) {
             Assert.isTrue(parentFile.exists() && parentFile.isDirectory());
         }
@@ -41,11 +41,24 @@ public class FolderStub extends AbstractIFolderStub implements IFolder {
     }
 
     @Override
+    public boolean isAccessible() {
+        return this.folder.exists();
+    }
+
+    @Override
     public IContainer getParent() {
         if (parent != null) {
             return parent;
         }
-        return project.getFolder(this.folder.getParentFile());
+        File parentFile = this.folder.getParentFile();
+        if (parentFile == null) {
+            return null;
+        }
+        if (Path.fromOSString(FileUtils.getFileAbsolutePath(parentFile)).equals(project.getLocation())) {
+            return project;
+        }
+
+        return new FolderStub(this.project, parentFile);
     }
 
     @Override
@@ -64,15 +77,13 @@ public class FolderStub extends AbstractIFolderStub implements IFolder {
     @Override
     public IFolder getFolder(IPath path) {
         String[] segments = path.segments();
-
-        IFolder f = null;
-        File curr = this.folder;
-        for (String string : segments) {
-            File parentFile = new File(curr, string);
-            f = (IFolder) project.getFolder(parentFile);
-            curr = parentFile;
+        File f = this.folder;
+        for (String s : segments) {
+            f = new File(f, s);
         }
-        return f;
+        // At this point it doesn't need to exist!
+        boolean mustExist = false;
+        return new FolderStub(project, null, f, mustExist);
     }
 
     @Override
@@ -119,11 +130,15 @@ public class FolderStub extends AbstractIFolderStub implements IFolder {
     public IPath getFullPath() {
         //        return Path.fromOSString(FileUtils.getFileAbsolutePath(this.folder));
         String fileAbsolutePath = FileUtils.getFileAbsolutePath(this.folder);
-        String workspaceAbsolutePath = FileUtils.getFileAbsolutePath(this.project.getProjectRoot().getParentFile());
 
         IPath fromOSString = Path.fromOSString(fileAbsolutePath);
-        IPath workspace = Path.fromOSString(workspaceAbsolutePath);
-        return fromOSString.makeRelativeTo(workspace);
+        IPath project = this.project.getLocation();
+        IPath relativeToProject = fromOSString.makeRelativeTo(project);
+
+        // Important: the full path is relative to the workspace, so, we need to
+        // add the project there too.
+        return new Path(this.project.getName()).append(relativeToProject);
+
     }
 
     @Override

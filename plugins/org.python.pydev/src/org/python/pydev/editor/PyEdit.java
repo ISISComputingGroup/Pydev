@@ -123,6 +123,7 @@ import org.python.pydev.editor.actions.PyMoveLineUpAction;
 import org.python.pydev.editor.actions.PyOpenAction;
 import org.python.pydev.editor.actions.PyOrganizeImports;
 import org.python.pydev.editor.actions.PyPeerLinker;
+import org.python.pydev.editor.actions.PyWrapParagraphAction;
 import org.python.pydev.editor.codecompletion.proposals.PyCompletionProposal;
 import org.python.pydev.editor.codefolding.CodeFoldingSetter;
 import org.python.pydev.editor.codefolding.PyEditProjection;
@@ -964,7 +965,7 @@ public class PyEdit extends PyEditProjection implements IPyEdit, IGrammarVersion
      * Note: This function will actually do a parse operation when called (so, it should be called with care).
      */
     public boolean hasSyntaxError(IDocument doc) throws MisconfigurationException {
-        ParseOutput reparse = PyParser.reparseDocument(new PyParser.ParserInfo(doc, this, false));
+        ParseOutput reparse = PyParser.parseFull(new PyParser.ParserInfo(doc, this, false));
         if (reparse.error != null) {
             this.getStatusLineManager().setErrorMessage(reparse.error.getMessage());
             return true;
@@ -1161,7 +1162,9 @@ public class PyEdit extends PyEditProjection implements IPyEdit, IGrammarVersion
                 setAction(ITextEditorActionConstants.MOVE_LINE_DOWN, action);
             }
 
+            addOfflineActionListener("w", new PyWrapParagraphAction(this), "Wrap paragraph", false);
             notifier.notifyOnCreateActions(resources);
+
             onCreateActions.call(this);
         } catch (Throwable e) {
             Log.log(e);

@@ -11,6 +11,7 @@
  */
 package org.python.pydev.plugin.nature;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,6 +26,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.QualifiedName;
+import org.python.pydev.ast.codecompletion.revisited.PythonPathHelper;
 import org.python.pydev.core.ExtensionHelper;
 import org.python.pydev.core.ICodeCompletionASTManager;
 import org.python.pydev.core.IInterpreterInfo;
@@ -151,7 +153,8 @@ public class PythonPathNature implements IPythonPathNature {
      * @return the project pythonpath with complete paths in the filesystem.
      */
     @Override
-    public String getOnlyProjectPythonPathStr(boolean addExternal) throws CoreException {
+    public List<String> getOnlyProjectPythonPathStr(boolean addExternal, boolean addInterpreterInfoSubstitutions)
+            throws CoreException {
         String source = null;
         String external = null;
         String contributed = null;
@@ -159,11 +162,11 @@ public class PythonPathNature implements IPythonPathNature {
         PythonNature nature = fNature;
 
         if (project == null || nature == null) {
-            return "";
+            return new ArrayList<>();
         }
 
         //Substitute with variables!
-        StringSubstitution stringSubstitution = new StringSubstitution(nature);
+        StringSubstitution stringSubstitution = new StringSubstitution(nature, addInterpreterInfoSubstitutions);
 
         source = (String) getProjectSourcePath(true, stringSubstitution, RETURN_STRING_WITH_SEPARATOR);
         if (addExternal) {
@@ -215,7 +218,8 @@ public class PythonPathNature implements IPythonPathNature {
         if (external == null) {
             external = "";
         }
-        return buf.append("|").append(external).append("|").append(contributed).toString();
+        return PythonPathHelper.parsePythonPathFromStr(
+                buf.append("|").append(external).append("|").append(contributed).toString(), null);
     }
 
     /**
@@ -234,7 +238,7 @@ public class PythonPathNature implements IPythonPathNature {
         }
 
         //Substitute with variables!
-        StringSubstitution stringSubstitution = new StringSubstitution(nature);
+        StringSubstitution stringSubstitution = new StringSubstitution(nature, true);
 
         source = (String) getProjectSourcePath(true, stringSubstitution, RETURN_STRING_WITH_SEPARATOR);
 
@@ -382,7 +386,7 @@ public class PythonPathNature implements IPythonPathNature {
         }
 
         if (replace && substitution == null) {
-            substitution = new StringSubstitution(fNature);
+            substitution = new StringSubstitution(fNature, true);
         }
 
         //we have to validate it, because as we store the values relative to the workspace, and not to the
@@ -485,7 +489,7 @@ public class PythonPathNature implements IPythonPathNature {
         }
 
         if (replace && substitution == null) {
-            substitution = new StringSubstitution(fNature);
+            substitution = new StringSubstitution(fNature, true);
         }
         return trimAndReplaceVariablesIfNeeded(replace, extPath, nature, substitution);
     }
@@ -498,8 +502,7 @@ public class PythonPathNature implements IPythonPathNature {
     }
 
     @Override
-    public Map<String, String> getVariableSubstitution() throws CoreException, MisconfigurationException,
-            PythonNatureWithoutProjectException {
+    public Map<String, String> getVariableSubstitution() {
         return getVariableSubstitution(true);
     }
 
@@ -507,8 +510,7 @@ public class PythonPathNature implements IPythonPathNature {
      * Returns the variables in the python nature and in the interpreter.
      */
     @Override
-    public Map<String, String> getVariableSubstitution(boolean addInterpreterInfoSubstitutions) throws CoreException,
-            MisconfigurationException, PythonNatureWithoutProjectException {
+    public Map<String, String> getVariableSubstitution(boolean addInterpreterInfoSubstitutions) {
         PythonNature nature = this.fNature;
         if (nature == null) {
             return new HashMap<String, String>();
@@ -517,20 +519,33 @@ public class PythonPathNature implements IPythonPathNature {
         Map<String, String> variableSubstitution;
         if (addInterpreterInfoSubstitutions) {
 
-            IInterpreterInfo info = nature.getProjectInterpreter();
-            Properties stringSubstitutionVariables = info.getStringSubstitutionVariables(true);
-            if (stringSubstitutionVariables == null) {
+            try {
+                IInterpreterInfo info = nature.getProjectInterpreter();
+                Properties stringSubstitutionVariables = info.getStringSubstitutionVariables(true);
+                if (stringSubstitutionVariables == null) {
+                    variableSubstitution = new HashMap<String, String>();
+                } else {
+                    variableSubstitution = PropertiesHelper.createMapFromProperties(stringSubstitutionVariables);
+                }
+            } catch (MisconfigurationException | PythonNatureWithoutProjectException e) {
+                Log.logInfo(
+                        "Interpreter info still not fully configured (interpreter substitutions won't be available). Project: "
+                                + nature.getProject(),
+                        e);
                 variableSubstitution = new HashMap<String, String>();
-            } else {
-                variableSubstitution = PropertiesHelper.createMapFromProperties(stringSubstitutionVariables);
             }
         } else {
             variableSubstitution = new HashMap<String, String>();
         }
 
         //no need to validate because those are always 'file-system' related
-        Map<String, String> variableSubstitution2 = nature.getStore().getMapProperty(
-                PythonPathNature.getProjectVariableSubstitutionQualifiedName());
+        Map<String, String> variableSubstitution2 = null;
+        try {
+            variableSubstitution2 = nature.getStore().getMapProperty(
+                    PythonPathNature.getProjectVariableSubstitutionQualifiedName());
+        } catch (CoreException e) {
+            Log.logInfo("Unable to get variable substitutions for project: " + nature.getProject(), e);
+        }
         if (variableSubstitution2 != null && !variableSubstitution2.isEmpty()) {
             if (variableSubstitution != null) {
                 variableSubstitution.putAll(variableSubstitution2);

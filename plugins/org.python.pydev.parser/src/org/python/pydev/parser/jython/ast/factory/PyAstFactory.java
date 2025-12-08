@@ -28,6 +28,7 @@ import org.python.pydev.parser.jython.ast.decoratorsType;
 import org.python.pydev.parser.jython.ast.exprType;
 import org.python.pydev.parser.jython.ast.keywordType;
 import org.python.pydev.parser.jython.ast.stmtType;
+import org.python.pydev.parser.jython.ast.type_paramType;
 import org.python.pydev.parser.visitors.NodeUtils;
 import org.python.pydev.shared_core.string.FullRepIterable;
 import org.python.pydev.shared_core.string.StringUtils;
@@ -55,13 +56,14 @@ public class PyAstFactory {
 
     public static FunctionDef createFunctionDefFull(NameTokType name, argumentsType args, stmtType[] body,
             decoratorsType[] decs, exprType returns, boolean async) {
-        return new FunctionDef(decs, name, args, returns, body, async);
+        return new FunctionDef(decs, name, null, args, returns, body, async);
     }
 
     public static final exprType[] EMPTY_EXPR_TYPE = new exprType[0];
     public static final keywordType[] EMPTY_KEYWORD_TYPE = new keywordType[0];
     public static final stmtType[] EMPTY_STMT_TYPE = new stmtType[0];
     public static final decoratorsType[] EMPTY_DECORATORS_TYPE = new decoratorsType[0];
+    public static final type_paramType[] EMPTY_TYPE_PARAMTYPE = new type_paramType[0];
 
     public argumentsType createEmptyArgumentsType() {
         exprType[] args = EMPTY_EXPR_TYPE;
@@ -95,7 +97,8 @@ public class PyAstFactory {
         exprType starargs = null;
         exprType kwargs = null;
 
-        ClassDef def = new ClassDef(new NameTok(name, NameTok.ClassName), bases, body, decs, keywords, starargs,
+        ClassDef def = new ClassDef(new NameTok(name, NameTok.ClassName), null, bases, body, decs,
+                keywords, starargs,
                 kwargs);
         return def;
 
@@ -169,7 +172,7 @@ public class PyAstFactory {
 
     public Call createCall(String call, List<exprType> params, keywordType[] keywords, exprType starargs,
             exprType kwargs) {
-        exprType[] array = params != null ? params.toArray(new Name[params.size()]) : new exprType[0];
+        exprType[] array = params != null ? params.toArray(new Name[params.size()]) : PyAstFactory.EMPTY_EXPR_TYPE;
         if (call.indexOf(".") != -1) {
             return new Call(createAttribute(call), array, keywords, starargs, kwargs);
         }
@@ -178,7 +181,7 @@ public class PyAstFactory {
 
     public Call createCall(exprType name, List<exprType> params, keywordType[] keywords, exprType starargs,
             exprType kwargs) {
-        exprType[] array = params != null ? params.toArray(new exprType[0]) : new exprType[0];
+        exprType[] array = params != null ? params.toArray(PyAstFactory.EMPTY_EXPR_TYPE) : PyAstFactory.EMPTY_EXPR_TYPE;
         return new Call(name, array, keywords, starargs, kwargs);
     }
 
@@ -240,7 +243,7 @@ public class PyAstFactory {
                 newBases.add(expr);
             }
         }
-        return newBases.toArray(new exprType[0]);
+        return newBases.toArray(PyAstFactory.EMPTY_EXPR_TYPE);
     }
 
     public exprType asExpr(Object node) {
@@ -296,7 +299,7 @@ public class PyAstFactory {
      * @param functionDef the function for the override body
      * @param currentClassName
      */
-    public stmtType createOverrideBody(FunctionDef functionDef, String parentClassName, String currentClassName) {
+    public stmtType createOverrideBody(FunctionDef functionDef) {
         //create a copy because we do not want to retain the original line/col and we may change the originals here.
         final boolean[] addReturn = new boolean[] { false };
         if (functionDef.returns != null) {
@@ -342,10 +345,19 @@ public class PyAstFactory {
         if (functionDef.decs != null) {
             for (decoratorsType dec : functionDef.decs) {
                 String rep = NodeUtils.getRepresentationString(dec.func);
-                if ("classmethod".equals(rep)) {
+                if (NodeUtils.isClassMethodDecoratorName(rep)) {
                     isClassMethod = true;
                     break;
                 }
+            }
+        }
+
+        boolean firstIsSelf = false;
+        if (functionDef.args != null && functionDef.args.args != null && functionDef.args.args.length > 0) {
+            exprType firstArg = functionDef.args.args[0];
+            if (firstArg != null) {
+                String rep = NodeUtils.getRepresentationString(firstArg);
+                firstIsSelf = "self".equals(rep);
             }
         }
 
@@ -380,27 +392,14 @@ public class PyAstFactory {
             }
         }
         Call call;
-        if (isClassMethod && params.size() > 0) {
-            //We need to use the super() construct
-            //Something as:
-            //Expr[value=
-            //    Call[func=
-            //        Attribute[value=
-            //            Call[func=Name[id=super, ctx=Load, reserved=false], args=[Name[id=Current, ctx=Load, reserved=false], Name[id=cls, ctx=Load, reserved=false]], keywords=[], starargs=null, kwargs=null],
-            //        attr=NameTok[id=test, ctx=Attrib], ctx=Load],
-            //    args=[], keywords=[], starargs=null, kwargs=null]
-            //]
+        if (isClassMethod && params.size() > 0 || firstIsSelf) {
+            exprType _firstParam = params.remove(0);
 
-            exprType firstParam = params.remove(0);
-
-            Call innerCall = createCall("super", currentClassName, NodeUtils.getRepresentationString(firstParam));
-            Attribute attr = new Attribute(innerCall, new NameTok(NodeUtils.getRepresentationString(functionDef),
-                    NameTok.Attrib), Attribute.Load);
-            call = new Call(attr, params.toArray(new Name[params.size()]), keywords.toArray(new keywordType[keywords
-                    .size()]), starargs, kwargs);
+            call = createCall("super()." + NodeUtils.getRepresentationString(functionDef), params,
+                    keywords.toArray(new keywordType[keywords.size()]), starargs, kwargs);
 
         } else {
-            call = createCall(parentClassName + "." + NodeUtils.getRepresentationString(functionDef), params,
+            call = createCall("super()." + NodeUtils.getRepresentationString(functionDef), params,
                     keywords.toArray(new keywordType[keywords.size()]), starargs, kwargs);
         }
         if (addReturn[0]) {

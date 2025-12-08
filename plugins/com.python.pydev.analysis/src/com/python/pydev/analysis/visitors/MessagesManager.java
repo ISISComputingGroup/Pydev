@@ -18,7 +18,6 @@ import java.util.Set;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
-import org.python.pydev.ast.analysis.IAnalysisPreferences;
 import org.python.pydev.ast.analysis.messages.CompositeMessage;
 import org.python.pydev.ast.analysis.messages.IMessage;
 import org.python.pydev.ast.analysis.messages.Message;
@@ -26,6 +25,7 @@ import org.python.pydev.ast.codecompletion.revisited.modules.SourceToken;
 import org.python.pydev.ast.codecompletion.revisited.visitors.AbstractVisitor;
 import org.python.pydev.ast.codecompletion.revisited.visitors.AbstractVisitor.ImportPartSourceToken;
 import org.python.pydev.core.CheckAnalysisErrors;
+import org.python.pydev.core.IAnalysisPreferences;
 import org.python.pydev.core.IToken;
 import org.python.pydev.core.docutils.ParsingUtils;
 import org.python.pydev.core.docutils.PySelection;
@@ -317,6 +317,7 @@ public final class MessagesManager {
             if (startsWithNamesToIgnore(g)) {
                 int type = IAnalysisPreferences.TYPE_UNUSED_VARIABLE;
 
+                boolean addMessage = true;
                 if (g.tok instanceof SourceToken) {
                     SourceToken t = (SourceToken) g.tok;
                     SimpleNode ast = t.getAst();
@@ -325,6 +326,9 @@ public final class MessagesManager {
                         if (n.ctx == NameTok.KwArg || n.ctx == NameTok.VarArg || n.ctx == NameTok.KeywordName) {
                             type = IAnalysisPreferences.TYPE_UNUSED_PARAMETER;
                         }
+                        if (n.ctx == NameTok.TypeVarName) {
+                            continue;
+                        }
                     } else if (ast instanceof Name) {
                         Name n = (Name) ast;
                         if (n.ctx == Name.Param || n.ctx == Name.KwOnlyParam) {
@@ -332,7 +336,6 @@ public final class MessagesManager {
                         }
                     }
                 }
-                boolean addMessage = true;
                 if (type == IAnalysisPreferences.TYPE_UNUSED_PARAMETER) {
                     // just add unused parameters in methods that have some content (not only 'pass' and 'strings')
 

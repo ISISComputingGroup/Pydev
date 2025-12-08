@@ -12,14 +12,14 @@ import java.util.List;
 
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
+import org.python.pydev.core.docstrings.AssistDocString;
+import org.python.pydev.core.docstrings.DocstringPreferences;
 import org.python.pydev.core.docutils.PySelection;
 import org.python.pydev.core.proposals.CompletionProposalFactory;
-import org.python.pydev.editor.actions.PyAction;
 import org.python.pydev.editor.codecompletion.proposals.DefaultCompletionProposalFactory;
-import org.python.pydev.editor.correctionassist.docstrings.AssistDocString;
-import org.python.pydev.editor.correctionassist.docstrings.DocstringsPrefPage;
 import org.python.pydev.shared_core.code_completion.ICompletionProposalHandle;
 import org.python.pydev.shared_core.string.StringUtils;
+import org.python.pydev.shared_core.string.TextSelectionUtils;
 
 import junit.framework.TestCase;
 
@@ -43,14 +43,14 @@ public class AssistDocStringTest extends TestCase {
     protected void setUp() throws Exception {
         super.setUp();
         assist = new AssistDocString();
-        DocstringsPrefPage.GENERATE_TYPE_DOCSTRING_ON_TESTS = true;
+        DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = true;
         CompletionProposalFactory.set(new DefaultCompletionProposalFactory());
     }
 
     @Override
     protected void tearDown() throws Exception {
         super.tearDown();
-        DocstringsPrefPage.GENERATE_TYPE_DOCSTRING_ON_TESTS = true;
+        DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = true;
         CompletionProposalFactory.set(null);
     }
 
@@ -104,7 +104,7 @@ public class AssistDocStringTest extends TestCase {
             }
 
             PySelection ps = new PySelection(d, selectionOffset);
-            String sel = PyAction.getLineWithoutComments(ps);
+            String sel = TextSelectionUtils.getLineWithoutComments(ps);
             boolean expected = testEntry.expectedResult;
             boolean isValid = assist.isValid(ps, sel, null, selectionOffset);
             assertEquals(StringUtils.format("Expected %s was %s sel: %s", expected, isValid, sel), expected, isValid);
@@ -133,11 +133,38 @@ public class AssistDocStringTest extends TestCase {
 
     public void testApplyGoogle2() throws Exception {
         String expected;
-        expected = "    def foo(self): #comment\r\n" +
-                "        '''\r\n" +
-                "        \r\n" +
-                "        '''";
+        expected = """
+                    def foo(self): #comment
+                        '''
+                    ....
+                        '''\
+                """.replace("....", "    ");
         checkGoogle(expected, "    def foo(self): #comment", 1);
+    }
+
+    public void testUpdateDocstringGoogleRequest() throws Exception {
+        String expected;
+        expected = """
+                    def foo(
+                        self,
+                        a,
+                        b):
+                        '''
+                        Args:
+                            a:
+                            b:
+                        '''
+                """;
+        checkGoogle(expected, """
+                    def foo(
+                        self,
+                        a,
+                        b):
+                        '''
+                        Args:
+                            a:
+                        '''
+                """, 1);
     }
 
     public void testApply() throws Exception {
@@ -276,7 +303,7 @@ public class AssistDocStringTest extends TestCase {
         Document doc = new Document(initial);
         PySelection ps = new PySelection(doc, 0, 0);
         AssistDocString assist = new AssistDocString("G");
-        DocstringsPrefPage.GENERATE_TYPE_DOCSTRING_ON_TESTS = false;
+        DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = false;
         List<ICompletionProposalHandle> props = assist.getProps(ps, null, null, null, null,
                 ps.getAbsoluteCursorOffset());
         assertEquals(proposals, props.size());
@@ -299,7 +326,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    test\n"
                 + "    :param a:\n"
                 + "    :type a:\n"
-                + "    '''", AssistDocString.updatedDocstring("'''test'''", Arrays.asList("a"), "\n", "    ", ":"));
+                + "'''", AssistDocString.updatedDocstring("'''test'''", Arrays.asList("a"), "\n", "    ", ":"));
     }
 
     public void testUpdateDocstring2() {
@@ -307,7 +334,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param a:\n"
                 + "    :type a:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("''':param test:'''", Arrays.asList("a"), "\n", "    ", ":"));
     }
 
@@ -316,7 +343,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param a:\n"
                 + "    :type a:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param test:\n"
                         + "'''", Arrays.asList("a"), "\n", "    ", ":"));
@@ -329,7 +356,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param b:\n"
                 + "    :type b:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param test:\n"
                         + "'''", Arrays.asList("a", "b"), "\n", "    ", ":"));
@@ -344,7 +371,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param c:\n"
                 + "    :type c:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param test:\n"
                         + "'''", Arrays.asList("a", "b", "c"), "\n", "    ", ":"));
@@ -359,7 +386,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param c:\n"
                 + "    :type c:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param b:\n"
                         + "    :param test:\n"
@@ -371,7 +398,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param test:\n"
                 + "    :param a:\n"
                 + "    :type a:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param test:\n"
                         + "    :param a:\n"
@@ -383,7 +410,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param a:\n"
                 + "    :type a:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param a:\n"
                         + "    :param test:\n"
@@ -397,7 +424,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param b: var b\n"
                 + "    :type b:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param a: var a\n"
                         + "    :param b: var b\n"
@@ -412,7 +439,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param b:\n"
                 + "    :type b:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param b:\n"
                         + "    :param test:\n"
@@ -426,7 +453,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param b:\n"
                 + "    :type b:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :type a:\n"
                         + "    :type b:\n"
@@ -436,21 +463,21 @@ public class AssistDocStringTest extends TestCase {
 
     public void testUpdateDocstringSphinx() {
 
-        boolean curr = DocstringsPrefPage.GENERATE_TYPE_DOCSTRING_ON_TESTS;
+        boolean curr = DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS;
         try {
-            DocstringsPrefPage.GENERATE_TYPE_DOCSTRING_ON_TESTS = false;
+            DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = false;
             assertEquals("'''\n"
                     + "    :param str a: var a\n"
                     + "    :param b: var b\n"
                     + "    :param test:\n"
-                    + "    '''",
+                    + "'''",
                     AssistDocString.updatedDocstring("'''\n"
                             + "    :param str a: var a\n"
                             + "    :param b: var b\n"
                             + "    :param test:\n"
                             + "'''", Arrays.asList("a", "b"), "\n", "    ", ":"));
         } finally {
-            DocstringsPrefPage.GENERATE_TYPE_DOCSTRING_ON_TESTS = curr;
+            DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = curr;
         }
     }
 
@@ -461,7 +488,7 @@ public class AssistDocStringTest extends TestCase {
                 + "    :param b: var b\n"
                 + "    :type b:\n"
                 + "    :param test:\n"
-                + "    '''",
+                + "'''",
                 AssistDocString.updatedDocstring("'''\n"
                         + "    :param str a: var a\n"
                         + "    :param b: var b\n"
@@ -470,15 +497,53 @@ public class AssistDocStringTest extends TestCase {
     }
 
     public void testUpdateDocstringGoogle() {
-        assertEquals("'''\n"
+        DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = false;
+        String initialAndExpected = "'''\n"
+                + "Args:\n"
                 + "    a:\n"
                 + "    b:\n"
                 + "    c:\n"
+                + "'''";
+        assertEquals(initialAndExpected,
+                AssistDocString.updatedDocstring(initialAndExpected, Collections.emptyList(), "\n", "    ", "G"));
+    }
+
+    public void testUpdateDocstringGoogle2() {
+        DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = false;
+        assertEquals("'''\n"
+                + "Args:\n"
+                + "    a:\n"
+                + "    b:\n"
+                + "    c:\n"
+                + "'''",
+                AssistDocString.updatedDocstring("'''\n"
+                        + "Args:\n"
+                        + "    a:\n"
+                        + "'''", Arrays.asList("a", "b", "c"), "\n", "    ", "G"));
+    }
+
+    public void testUpdateDocstringGoogle3() {
+        DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = false;
+        assertEquals("'''\n"
+                + "    Args:\n"
+                + "        a:\n"
+                + "        b:\n"
+                + "        c:\n"
                 + "    '''",
                 AssistDocString.updatedDocstring("'''\n"
-                        + "    a:\n"
-                        + "    b:\n"
-                        + "    c:\n"
-                        + "'''", Collections.emptyList(), "\n", "    ", "G"));
+                        + "    Args:\n"
+                        + "        a:\n"
+                        + "    '''", Arrays.asList("a", "b", "c"), "\n", "    ", "G"));
+    }
+
+    public void testUpdateDocstringGoogle4() {
+        DocstringPreferences.GENERATE_TYPE_DOCSTRING_ON_TESTS = false;
+        assertEquals("'''\n"
+                + "    \n"
+                + "    Args:\n"
+                + "        a:\n"
+                + "    '''",
+                AssistDocString.updatedDocstring("'''\n"
+                        + "    '''", Arrays.asList("a"), "\n", "    ", "G"));
     }
 }

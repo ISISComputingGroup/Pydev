@@ -10,14 +10,16 @@ import java.util.ArrayList;
 
 import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
+import org.python.pydev.ast.refactoring.RefactoringInfo;
 import org.python.pydev.core.IGrammarVersionProvider;
 import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.core.TestCaseUtils;
 import org.python.pydev.core.proposals.CompletionProposalFactory;
 import org.python.pydev.editor.codecompletion.proposals.DefaultCompletionProposalFactory;
-import org.python.pydev.refactoring.core.base.RefactoringInfo;
 import org.python.pydev.shared_core.string.CoreTextSelection;
 import org.python.pydev.shared_core.string.ICoreTextSelection;
+
+import com.python.pydev.analysis.refactoring.tdd.PyCreateClass;
 
 public class PyCreateClassTest extends TestCaseUtils {
 
@@ -67,11 +69,11 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, 0, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
 
         assertContentsEqual("" +
-                "class MyClass(${object}):\n" +
-                "    ${pass}${cursor}\n" +
+                "class MyClass:\n" +
+                "    pass\n" +
                 "\n" +
                 "\n" +
                 "MyClass()"
@@ -95,7 +97,7 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, document.getLength() - 5, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
 
         assertContentsEqual("" +
                 "#=============\n" +
@@ -106,8 +108,8 @@ public class PyCreateClassTest extends TestCaseUtils {
                 "    pass\n" +
                 "\n" +
                 "\n" +
-                "class MyClass(${object}):\n" +
-                "    ${pass}${cursor}\n" +
+                "class MyClass:\n" +
+                "    pass\n" +
                 "\n" +
                 "\n"
                 +
@@ -132,7 +134,7 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, document.getLength() - 5, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
 
         assertContentsEqual("" +
                 "a = 10\n" +
@@ -144,9 +146,9 @@ public class PyCreateClassTest extends TestCaseUtils {
                 "    pass\n" +
                 "\n" +
                 "\n" +
-                "class MyClass(${object}):\n"
+                "class MyClass:\n"
                 +
-                "    ${pass}${cursor}\n" +
+                "    pass\n" +
                 "\n" +
                 "\n" +
                 "MyClass()" +
@@ -168,14 +170,14 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, document.getLength() - 5, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
 
         assertContentsEqual("" +
                 "a = 10\n" +
                 "\n" +
                 "\n" +
-                "class MyClass(${object}):\n" +
-                "    ${pass}${cursor}\n"
+                "class MyClass:\n" +
+                "    pass\n"
                 +
                 "\n" +
                 "\n" +
@@ -196,14 +198,14 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, 0, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
 
         assertContentsEqual("" +
-                "class MyClass(${object}):\n" +
+                "class MyClass:\n" +
                 "    \n"
                 +
-                "    def __init__(self, ${aa}, ${bb}, ${param2}):\n" +
-                "        ${pass}${cursor}\n" +
+                "    def __init__(self, aa, bb, param2):\n" +
+                "        pass\n" +
                 "\n" +
                 "\n"
                 +
@@ -219,14 +221,14 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, 0, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
 
         assertContentsEqual("" +
-                "class MyClass(${object}):\n" +
+                "class MyClass:\n" +
                 "    \n"
                 +
-                "    def __init__(self, ${aa}, ${bb}, ${my_foo}):\n" +
-                "        ${pass}${cursor}\n" +
+                "    def __init__(self, aa, bb, my_foo):\n" +
+                "        pass\n" +
                 "\n" +
                 "\n"
                 +
@@ -248,13 +250,13 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, source.length() - 4, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
 
         assertContentsEqual("" +
                 "import foo\n" +
                 "\n" +
-                "class MyClass(${object}):\n" +
-                "    ${pass}${cursor}\n"
+                "class MyClass:\n" +
+                "    pass\n"
                 +
                 "\n" +
                 "\n" +
@@ -280,7 +282,7 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, source.length() - 4, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_BEFORE_CURRENT);
 
         assertContentsEqual("" +
                 "import foo\n" +
@@ -290,8 +292,8 @@ public class PyCreateClassTest extends TestCaseUtils {
                 "\n" +
                 "\n"
                 +
-                "class MyClass(${object}):\n" +
-                "    ${pass}${cursor}\n" +
+                "class MyClass:\n" +
+                "    pass\n" +
                 "\n" +
                 "\n" +
                 "class Bar(object):\n"
@@ -317,7 +319,7 @@ public class PyCreateClassTest extends TestCaseUtils {
         ICoreTextSelection selection = new CoreTextSelection(document, source.length() - 4, 0);
         RefactoringInfo info = new RefactoringInfo(document, selection, PY_27_ONLY_GRAMMAR_VERSION_PROVIDER);
 
-        pyCreateClass.execute(info, PyCreateClass.LOCATION_STRATEGY_END);
+        ExecutePyCreate.execute(pyCreateClass, info, PyCreateClass.LOCATION_STRATEGY_END);
 
         assertContentsEqual("" +
                 "import foo\n" +
@@ -332,8 +334,8 @@ public class PyCreateClassTest extends TestCaseUtils {
                 "\n" +
                 "\n"
                 +
-                "class MyClass(${object}):\n" +
-                "    ${pass}${cursor}\n" +
+                "class MyClass:\n" +
+                "    pass\n" +
                 "\n" +
                 "\n", document.get());
     }
@@ -349,8 +351,8 @@ public class PyCreateClassTest extends TestCaseUtils {
                 document);
 
         assertContentsEqual("" +
-                "class Foo(${object}):\n" +
-                "    ${pass}${cursor}\n" +
+                "class Foo:\n" +
+                "    pass\n" +
                 "\n" +
                 "\n", document.get());
     }

@@ -28,6 +28,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.python.pydev.ast.adapters.AbstractScopeNode;
+import org.python.pydev.ast.adapters.FunctionDefAdapter;
+import org.python.pydev.ast.adapters.IASTNodeAdapter;
+import org.python.pydev.ast.adapters.IClassDefAdapter;
+import org.python.pydev.ast.adapters.ModuleAdapter;
 import org.python.pydev.parser.jython.SimpleNode;
 import org.python.pydev.parser.jython.ast.Expr;
 import org.python.pydev.parser.jython.ast.FunctionDef;
@@ -39,11 +44,6 @@ import org.python.pydev.parser.jython.ast.argumentsType;
 import org.python.pydev.parser.jython.ast.exprType;
 import org.python.pydev.parser.jython.ast.stmtType;
 import org.python.pydev.parser.jython.ast.factory.PyAstFactory;
-import org.python.pydev.refactoring.ast.adapters.AbstractScopeNode;
-import org.python.pydev.refactoring.ast.adapters.FunctionDefAdapter;
-import org.python.pydev.refactoring.ast.adapters.IASTNodeAdapter;
-import org.python.pydev.refactoring.ast.adapters.IClassDefAdapter;
-import org.python.pydev.refactoring.ast.adapters.ModuleAdapter;
 import org.python.pydev.refactoring.ast.visitors.renamer.LocalVarRenameVisitor;
 import org.python.pydev.refactoring.coderefactoring.extractmethod.request.ExtractMethodRequest;
 import org.python.pydev.refactoring.core.edit.AbstractInsertEdit;
@@ -94,11 +94,11 @@ public class ExtractMethodEdit extends AbstractInsertEdit {
     }
 
     private FunctionDef initExtractedMethod(List<stmtType> body, List<exprType> argsList) {
-        argumentsType args = new argumentsType(argsList.toArray(new exprType[0]), null, null, null, null, null, null,
-                null, null, null);
+        argumentsType args = new argumentsType(argsList.toArray(PyAstFactory.EMPTY_EXPR_TYPE), null, null, null, null,
+                null, null, null, null, null);
 
         FunctionDef extractedMethod = PyAstFactory.createFunctionDefFull(new NameTok(methodName, NameTok.FunctionName),
-                args, body.toArray(new stmtType[0]), null, null, false);
+                args, body.toArray(PyAstFactory.EMPTY_STMT_TYPE), null, null, false);
         return extractedMethod;
     }
 
@@ -152,7 +152,7 @@ public class ExtractMethodEdit extends AbstractInsertEdit {
             returnValue = returnList.get(0);
 
         } else if (returnList.size() > 1) {
-            returnValue = new Tuple(returnList.toArray(new exprType[0]), Tuple.Load, false);
+            returnValue = new Tuple(returnList.toArray(PyAstFactory.EMPTY_EXPR_TYPE), Tuple.Load, false);
 
         } else if (body.size() == 1) {
             // return expression as-is (note: body must be cleared)

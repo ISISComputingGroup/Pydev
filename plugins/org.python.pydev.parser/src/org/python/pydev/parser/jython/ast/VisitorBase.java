@@ -35,6 +35,12 @@ public abstract class VisitorBase implements VisitorIF {
         return ret;
     }
 
+    public Object visitTypeParamsSuite(TypeParamsSuite node) throws Exception {
+        Object ret = unhandled_node(node);
+        traverse(node);
+        return ret;
+    }
+
     public Object visitWithItem(WithItem node) throws Exception {
         Object ret = unhandled_node(node);
         traverse(node);
@@ -72,6 +78,12 @@ public abstract class VisitorBase implements VisitorIF {
     }
 
     public Object visitAugAssign(AugAssign node) throws Exception {
+        Object ret = unhandled_node(node);
+        traverse(node);
+        return ret;
+    }
+
+    public Object visitTypeAlias(TypeAlias node) throws Exception {
         Object ret = unhandled_node(node);
         traverse(node);
         return ret;
@@ -414,6 +426,24 @@ public abstract class VisitorBase implements VisitorIF {
     }
 
     public Object visitMatchOr(MatchOr node) throws Exception {
+        Object ret = unhandled_node(node);
+        traverse(node);
+        return ret;
+    }
+
+    public Object visitTypeVar(TypeVar node) throws Exception {
+        Object ret = unhandled_node(node);
+        traverse(node);
+        return ret;
+    }
+
+    public Object visitParamSpec(ParamSpec node) throws Exception {
+        Object ret = unhandled_node(node);
+        traverse(node);
+        return ret;
+    }
+
+    public Object visitTypeVarTuple(TypeVarTuple node) throws Exception {
         Object ret = unhandled_node(node);
         traverse(node);
         return ret;

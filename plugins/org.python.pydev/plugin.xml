@@ -477,6 +477,11 @@
             name="Flake8"
             id="org.python.pydev.prefs.flake8"/>
       <page
+            class="org.python.pydev.builder.pyright.PyrightPrefPage"
+            category="org.python.pydev.prefs.extensions.analysis"
+            name="Pyright"
+            id="org.python.pydev.prefs.pyright"/>
+      <page
             class="org.python.pydev.builder.todo.PyTodoPrefPage"
             category="org.python.pydev.prefs"
             name="Task Tags"
@@ -1239,6 +1244,14 @@
        <super type="org.eclipse.core.resources.problemmarker"/>
        <persistent value="true"/>
     </extension>
+    <!-- Communicate pyright problems as markers -->
+    <extension
+        point="org.eclipse.core.resources.markers"
+        name="PyRight Problem"
+        id="pyrightproblemmarker">
+       <super type="org.eclipse.core.resources.problemmarker"/>
+       <persistent value="true"/>
+    </extension>
 <!-- Communicate 'invalid' file issues-->
     <extension
         point="org.eclipse.core.resources.markers"
@@ -1925,11 +1938,11 @@
             autoinsert="false"
             name="super"
             icon="platform:/plugin/org.python.pydev.shared_ui/icons/template.gif"
-            description="Call super(current_class, self).current_method()"
+            description="Call super().current_method()"
             contextTypeId="org.python.pydev.editor.templates.python"
             id="org.python.pydev.editor.templates.python.super">
 <pattern>
-super(${current_class}, ${self_or_cls}).${current_method}(${cursor})
+super().${current_method}(${cursor})
 </pattern>
       </template>
 
@@ -3115,7 +3128,7 @@ The related image showing the error is at: http://i.stack.imgur.com/IfNFY.png
    </extension>
 
    <extension point="org.python.pydev.pydev_ctrl_1">
-		<ctrl_1_participant class="com.python.pydev.analysis.ctrl_1.DontAnalyzeFileMarkerParticipant"/>
+		<ctrl_1_participant class="com.python.pydev.analysis.marker_quick_fixes.DontAnalyzeFileMarkerParticipant"/>
    </extension>
 
  <!-- Adds ctrl+2+ - - d -->

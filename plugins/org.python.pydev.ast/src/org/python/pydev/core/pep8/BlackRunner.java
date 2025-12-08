@@ -31,11 +31,16 @@ public class BlackRunner {
             String[] parseArguments = ProcessUtils.parseArguments(std.blackParameters);
             String cmdarrayAsStr;
 
+            String[] pathArgs = filepath != null && filepath.length() > 0
+                    ? new String[] { "--stdin-filename", filepath }
+                    : new String[0];
+
             String executableLocation = std.blackExecutableLocation;
             if (!std.searchBlackInInterpreter && executableLocation != null && !executableLocation.isEmpty()
                     && FileUtils.enhancedIsFile(new File(executableLocation))) {
                 SimpleRunner simpleRunner = new SimpleRunner();
-                String[] args = ArrayUtils.concatArrays(new String[] { executableLocation, "-" }, parseArguments);
+                String[] args = ArrayUtils.concatArrays(new String[] { executableLocation, "-" }, pathArgs,
+                        parseArguments);
                 Tuple<Process, String> r = simpleRunner.run(args, workingDir, null, null);
                 process = r.o1;
                 cmdarrayAsStr = r.o2;
@@ -49,10 +54,6 @@ public class BlackRunner {
                     }
                 }
                 PythonRunner pythonRunner = new PythonRunner(nature);
-
-                String[] pathArgs = filepath != null && filepath.length() > 0
-                        ? new String[] { "--stdin-filename", filepath }
-                        : new String[0];
 
                 Tuple<Process, String> processInfo = pythonRunner.createProcessFromModuleName("black",
                         ArrayUtils.concatArrays(new String[] { "-" }, pathArgs, parseArguments),

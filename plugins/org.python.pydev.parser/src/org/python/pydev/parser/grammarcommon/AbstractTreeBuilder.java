@@ -43,6 +43,7 @@ import org.python.pydev.parser.jython.ast.Starred;
 import org.python.pydev.parser.jython.ast.Str;
 import org.python.pydev.parser.jython.ast.StrJoin;
 import org.python.pydev.parser.jython.ast.Suite;
+import org.python.pydev.parser.jython.ast.TypeParamsSuite;
 import org.python.pydev.parser.jython.ast.UnaryOp;
 import org.python.pydev.parser.jython.ast.With;
 import org.python.pydev.parser.jython.ast.WithItem;
@@ -55,6 +56,7 @@ import org.python.pydev.parser.jython.ast.exprType;
 import org.python.pydev.parser.jython.ast.sliceType;
 import org.python.pydev.parser.jython.ast.stmtType;
 import org.python.pydev.parser.jython.ast.suiteType;
+import org.python.pydev.parser.jython.ast.factory.PyAstFactory;
 import org.python.pydev.shared_core.string.FastStringBuffer;
 
 /**
@@ -162,7 +164,7 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
                 break;
 
             case JJTFUNCDEF:
-                ret = new FunctionDef(null, null, null, null, null, false);
+                ret = new FunctionDef(null, null, null, null, null, null, false);
                 break;
 
             case JJTBEGIN_DECORATOR:
@@ -281,7 +283,7 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
                 break;
 
             case JJTFILE_INPUT:
-                ret = new Module(null);
+                ret = new Module(PyAstFactory.EMPTY_STMT_TYPE);
                 break;
 
             case JJTEVAL_INPUT:
@@ -735,13 +737,13 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
         exprType iter = (exprType) stack.popNode();
         exprType target = (exprType) stack.popNode();
         ctx.setStore(target);
-        col.added.add(new Comprehension(target, iter, ifs.toArray(new exprType[0])));
+        col.added.add(new Comprehension(target, iter, ifs.toArray(PyAstFactory.EMPTY_EXPR_TYPE)));
         return col;
     }
 
     protected final SimpleNode makeDictionaryOrSet(int arity) {
         if (arity == 0) {
-            return new Dict(new exprType[0], new exprType[0]);
+            return new Dict(PyAstFactory.EMPTY_EXPR_TYPE, PyAstFactory.EMPTY_EXPR_TYPE);
         }
 
         SimpleNode dictNode0 = stack.popNode();
@@ -862,9 +864,15 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
             addSpecialsAndClearOriginal(funcDefReturnAnn, actualReturnAnnotation);
         }
         argumentsType arguments = makeArguments(arity - 1);
+        SimpleNode node = stack.peekNode();
+        TypeParamsSuite typeParams = null;
+        if (node instanceof TypeParamsSuite) {
+            typeParams = (TypeParamsSuite) stack.popNode();
+        }
         NameTok nameTok = makeNameTok(NameTok.FunctionName);
         //decorator is always null at this point... it's decorated later on
         FunctionDef funcDef = (FunctionDef) n;
+        funcDef.type_params = typeParams;
         funcDef.name = nameTok;
         funcDef.args = arguments;
         funcDef.body = body;
@@ -883,6 +891,9 @@ public abstract class AbstractTreeBuilder extends AbstractTreeBuilderHelpers {
 
         ArrayList<SimpleNode> list = new ArrayList<SimpleNode>();
         for (int i = l - 1; i >= 0; i--) {
+            if (stack.peekNode() instanceof TypeParamsSuite) {
+                break;
+            }
             SimpleNode popped = stack.popNode();
             try {
                 if (popped.getId() == JJTEXTRAKEYWORDLIST) {

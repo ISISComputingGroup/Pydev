@@ -29,6 +29,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.python.pydev.ast.adapters.FunctionDefAdapter;
+import org.python.pydev.ast.adapters.IClassDefAdapter;
+import org.python.pydev.ast.adapters.INodeAdapter;
 import org.python.pydev.core.MisconfigurationException;
 import org.python.pydev.parser.jython.SimpleNode;
 import org.python.pydev.parser.jython.ast.Assign;
@@ -43,9 +46,6 @@ import org.python.pydev.parser.jython.ast.exprType;
 import org.python.pydev.parser.jython.ast.stmtType;
 import org.python.pydev.parser.jython.ast.factory.NodeHelper;
 import org.python.pydev.parser.jython.ast.factory.PyAstFactory;
-import org.python.pydev.refactoring.ast.adapters.FunctionDefAdapter;
-import org.python.pydev.refactoring.ast.adapters.IClassDefAdapter;
-import org.python.pydev.refactoring.ast.adapters.INodeAdapter;
 import org.python.pydev.refactoring.codegenerator.constructorfield.request.ConstructorFieldRequest;
 import org.python.pydev.refactoring.core.edit.AbstractInsertEdit;
 
@@ -105,7 +105,7 @@ public class ConstructorMethodEdit extends AbstractInsertEdit {
             argsExprList.add(new Name(parameter.trim(), Name.Param, false));
         }
 
-        exprType[] argsExpr = argsExprList.toArray(new exprType[0]);
+        exprType[] argsExpr = argsExprList.toArray(PyAstFactory.EMPTY_EXPR_TYPE);
         argumentsType args = new argumentsType(argsExpr, varArg, kwArg, null, null, null, null, null, null, null);
 
         //constructorCalls
@@ -129,7 +129,7 @@ public class ConstructorMethodEdit extends AbstractInsertEdit {
 
         //create function def
         return PyAstFactory.createFunctionDefFull(new NameTok(NodeHelper.KEYWORD_INIT, NameTok.FunctionName), args,
-                body.toArray(new stmtType[0]), null, null, false);
+                body.toArray(PyAstFactory.EMPTY_STMT_TYPE), null, null, false);
     }
 
     private Expr extractConstructorInit(IClassDefAdapter base) {
@@ -144,7 +144,7 @@ public class ConstructorMethodEdit extends AbstractInsertEdit {
                 Name selfArg = new Name(NodeHelper.KEYWORD_SELF, Name.Load, false);
                 constructorParameters.add(0, selfArg);
 
-                exprType[] argExp = constructorParameters.toArray(new exprType[0]);
+                exprType[] argExp = constructorParameters.toArray(PyAstFactory.EMPTY_EXPR_TYPE);
                 Name varArg = null;
                 Name kwArg = null;
 

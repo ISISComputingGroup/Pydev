@@ -8,6 +8,7 @@ public interface ISimpleNodeSwitch {
     public void visit(Expression node);
     public void visit(NameTok node);
     public void visit(Suite node);
+    public void visit(TypeParamsSuite node);
     public void visit(WithItem node);
     public void visit(FunctionDef node);
     public void visit(ClassDef node);
@@ -15,6 +16,7 @@ public interface ISimpleNodeSwitch {
     public void visit(Delete node);
     public void visit(Assign node);
     public void visit(AugAssign node);
+    public void visit(TypeAlias node);
     public void visit(Print node);
     public void visit(For node);
     public void visit(While node);
@@ -72,4 +74,7 @@ public interface ISimpleNodeSwitch {
     public void visit(MatchKeyVal node);
     public void visit(MatchAs node);
     public void visit(MatchOr node);
+    public void visit(TypeVar node);
+    public void visit(ParamSpec node);
+    public void visit(TypeVarTuple node);
 }

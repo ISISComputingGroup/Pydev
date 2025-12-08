@@ -251,7 +251,7 @@ public final class FastParser {
         int id = System.identityHashCode(t);
         List<stmtType> list = objectIdToBody.get(id);
         if (list != null) {
-            NodeUtils.setBody(t, list.toArray(new stmtType[0]));
+            NodeUtils.setBody(t, list.toArray(PyAstFactory.EMPTY_STMT_TYPE));
             for (stmtType stmtType : list) {
                 buildBody(stmtType, objectIdToBody);
             }
@@ -336,7 +336,8 @@ public final class FastParser {
     }
 
     private ClassDef createClassDef(int lastReturnedLine, NameTok nameTok, int matchedCol) {
-        ClassDef classDef = new ClassDef(nameTok, PyAstFactory.EMPTY_EXPR_TYPE, PyAstFactory.EMPTY_STMT_TYPE, null,
+        ClassDef classDef = new ClassDef(nameTok, null, PyAstFactory.EMPTY_EXPR_TYPE,
+                PyAstFactory.EMPTY_STMT_TYPE, null,
                 null, null,
                 null);
         classDef.beginLine = lastReturnedLine + 1;

@@ -49,6 +49,7 @@ import org.python.pydev.ast.interpreter_managers.InterpreterManagersAPI;
 import org.python.pydev.ast.runners.SimpleRunner;
 import org.python.pydev.core.ExtensionHelper;
 import org.python.pydev.core.ICodeCompletionASTManager;
+import org.python.pydev.core.IGrammarVersionProvider;
 import org.python.pydev.core.IInterpreterInfo;
 import org.python.pydev.core.IInterpreterManager;
 import org.python.pydev.core.IModule;
@@ -135,7 +136,9 @@ public class PythonNature extends AbstractPythonNature implements IPythonNature 
         protected IStatus run(IProgressMonitor monitor) {
             String paths;
             try {
-                paths = pythonPathNature.getOnlyProjectPythonPathStr(true);
+                boolean addInterpreterInfoSubstitutions = true;
+                paths = StringUtils.join("|",
+                        pythonPathNature.getOnlyProjectPythonPathStr(true, addInterpreterInfoSubstitutions));
             } catch (CoreException e1) {
                 Log.log(e1);
                 return Status.OK_STATUS;
@@ -671,11 +674,11 @@ public class PythonNature extends AbstractPythonNature implements IPythonNature 
         protected IStatus run(IProgressMonitor monitor) {
             try {
                 if (astManager != null) {
-                    String pythonpath = pythonPathNature.getOnlyProjectPythonPathStr(true);
+                    List<String> pythonpath = pythonPathNature.getOnlyProjectPythonPathStr(true, true);
                     PythonPathHelper pythonPathHelper = (PythonPathHelper) astManager.getModulesManager()
                             .getPythonPathHelper();
                     //If it doesn't match, rebuid the pythonpath!
-                    if (!new HashSet<String>(PythonPathHelper.parsePythonPathFromStr(pythonpath, null))
+                    if (!new HashSet<String>(pythonpath)
                             .equals(new HashSet<String>(pythonPathHelper.getPythonpath()))) {
                         rebuildPath();
                     }
@@ -909,7 +912,10 @@ public class PythonNature extends AbstractPythonNature implements IPythonNature 
                 Log.log(e);
                 errorMessage = e.getMessage();
             }
-            return new Tuple<String, String>(split.o1 + " " + "2.7",
+            return new Tuple<String, String>(
+                    split.o1 + " "
+                            + IGrammarVersionProvider.grammarVersionToRep
+                                    .get(IGrammarVersionProvider.LATEST_GRAMMAR_PY3_VERSION),
                     errorMessage + " (in project: " + getProject() + ")");
         }
         return new Tuple<String, String>(versionPropertyCache, null);
@@ -1278,9 +1284,20 @@ public class PythonNature extends AbstractPythonNature implements IPythonNature 
             case "3.2":
             case "3.3":
             case "3.4":
+            // @formatter:off
+            /*[[[cog
+            # Note: run
+            # python -m dev codegen
+            # to regenerate
+            from codegen_helper import python_versions_base, python_versions_underscore
+
+            for version_under, version_base in zip(python_versions_underscore, python_versions_base):
+                constant_name = f'GRAMMAR_PYTHON_VERSION_{version_under}'
+                cog.outl(f'case "{version_base}":')
+                cog.outl(f'    return {constant_name};')
+            ]]]*/
             case "3.5":
                 return GRAMMAR_PYTHON_VERSION_3_5;
-
             case "3.6":
                 return GRAMMAR_PYTHON_VERSION_3_6;
             case "3.7":
@@ -1295,7 +1312,10 @@ public class PythonNature extends AbstractPythonNature implements IPythonNature 
                 return GRAMMAR_PYTHON_VERSION_3_11;
             case "3.12":
                 return GRAMMAR_PYTHON_VERSION_3_12;
-
+            case "3.13":
+                return GRAMMAR_PYTHON_VERSION_3_13;
+            /*[[[end]]]*/
+            // @formatter:on
             default:
                 break;
         }

@@ -25,7 +25,7 @@ import org.python.pydev.ast.codecompletion.revisited.CompletionStateFactory;
 import org.python.pydev.ast.codecompletion.revisited.modules.SourceModule;
 import org.python.pydev.ast.codecompletion.revisited.modules.SourceToken;
 import org.python.pydev.ast.codecompletion.revisited.visitors.AbstractVisitor;
-import org.python.pydev.ast.codecompletion.revisited.visitors.AssignDefinition;
+import org.python.pydev.ast.codecompletion.revisited.visitors.AssignOrTypeAliasDefinition;
 import org.python.pydev.ast.codecompletion.revisited.visitors.Definition;
 import org.python.pydev.ast.codecompletion.revisited.visitors.LocalScope;
 import org.python.pydev.core.ICompletionCache;
@@ -73,6 +73,8 @@ import org.python.pydev.shared_core.model.ISimpleNode;
 import org.python.pydev.shared_core.string.FullRepIterable;
 import org.python.pydev.shared_core.structure.FastStack;
 import org.python.pydev.shared_core.structure.StringToIntCounterSmallSet;
+import org.python.pydev.shared_core.utils.ArrayUtils;
+import org.python.pydev.shared_core.utils.ArrayUtils.ArraysIterator;
 
 import com.python.pydev.analysis.visitors.Found;
 import com.python.pydev.analysis.visitors.GenAndTok;
@@ -253,6 +255,11 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
 
         handleDecorators(node.decs);
 
+        // visit typed params. i.e.: class A[T]
+        if (node.type_params != null) {
+            node.type_params.accept(visitor);
+        }
+
         //we want to visit the bases before actually starting the class scope (as it's as if they're attribute
         //accesses).
         if (node.bases != null) {
@@ -383,6 +390,7 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
         addToNamesToIgnore(node, false, true);
 
         AbstractScopeAnalyzerVisitor visitor = this;
+
         argumentsType args = node.args;
 
         //visit the defaults first (before starting the scope, because this is where the load of variables from other scopes happens)
@@ -403,38 +411,41 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
             }
         }
 
-        if (args.kwonlyargannotation != null) {
-            for (exprType expr : args.kwonlyargannotation) {
-                if (expr != null) {
-                    expr.accept(visitor);
-                }
-            }
+        ArraysIterator<exprType> it = new ArrayUtils.ArraysIterator<>();
+        it.addArray(args.kwonlyargannotation);
+        it.addArray(args.annotation);
+        if (args.varargannotation != null) {
+            it.addArray(new exprType[] { args.varargannotation });
         }
-
-        //visit annotation
-        if (args.annotation != null) {
-            for (exprType expr : args.annotation) {
-                if (expr != null) {
-                    int scopeType = Scope.SCOPE_TYPE_ANNOTATION;
-                    if (futureAnnotationsImported) {
-                        scopeType = Scope.SCOPE_TYPE_ANNOTATION_STR;
-                    }
-                    startScope(scopeType, expr);
-                    expr.accept(visitor);
-                    endScope(expr);
-                }
-            }
+        if (args.kwargannotation != null) {
+            it.addArray(new exprType[] { args.kwargannotation });
         }
-
-        //visit the return
         if (node.returns != null) {
+            it.addArray(new exprType[] { node.returns });
+        }
+
+        //visit all the annotations in a new scope
+        if (it.hasNext()) {
             int scopeType = Scope.SCOPE_TYPE_ANNOTATION;
-            if (futureAnnotationsImported) {
+            if (futureAnnotationsImported || !this.scope.isInGobalScope()) {
                 scopeType = Scope.SCOPE_TYPE_ANNOTATION_STR;
             }
-            startScope(scopeType, node.returns);
-            node.returns.accept(visitor);
-            endScope(node.returns);
+            SimpleNode dummyNode = new SimpleNode();
+            startScope(scopeType, dummyNode);
+            if (node.type_params != null) {
+                // Note: we visit type-params multiple times so that the types are available in
+                // all required scopes when checking the function (arguments, return and method body).
+                node.type_params.accept(visitor);
+            }
+
+            while (it.hasNext()) {
+                exprType expr = it.next();
+                if (expr == null) {
+                    continue;
+                }
+                expr.accept(visitor);
+            }
+            endScope(dummyNode);
         }
 
         //then the decorators (no, still not in method scope)
@@ -442,6 +453,13 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
 
         startScope(Scope.SCOPE_TYPE_METHOD, node);
         this.currentLocalScope.getScopeStack().push(node);
+
+        // visit typed params. i.e.: def func[T](arg: t):
+        if (node.type_params != null) {
+            // Note: we visit type-params multiple times so that the types are available in
+            // all required scopes when checking the function (arguments, return and method body).
+            node.type_params.accept(visitor);
+        }
 
         scope.isInMethodDefinition = true;
         //visit regular args
@@ -566,7 +584,8 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
     @Override
     public Object visitNameTok(NameTok nameTok) throws Exception {
         unhandled_node(nameTok);
-        if (nameTok.ctx == NameTok.VarArg || nameTok.ctx == NameTok.KwArg) {
+        if (nameTok.ctx == NameTok.VarArg || nameTok.ctx == NameTok.KwArg || nameTok.ctx == NameTok.TypeVarName
+                || nameTok.ctx == NameTok.TypeAliasName) {
             SourceToken token = AbstractVisitor.makeToken(nameTok, moduleName, nature, this.current);
             scope.addToken(token, token, (nameTok).id);
             if (checkCurrentScopeForAssignmentsToBuiltins()) {
@@ -916,12 +935,16 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
 
         if (node.type != null) {
             int scopeType = Scope.SCOPE_TYPE_ANNOTATION;
-            if (futureAnnotationsImported) {
+            if (futureAnnotationsImported || !this.scope.isInGobalScope()) {
                 scopeType = Scope.SCOPE_TYPE_ANNOTATION_STR;
             }
             startScope(scopeType, node.type);
             node.type.accept(this);
             endScope(node.type);
+        }
+
+        if (node.value == null) {
+            scope.inAssignWithoutValue += 1;
         }
 
         //in 'target1 = target2 = a', this is 'target1, target2'
@@ -931,6 +954,9 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
                     node.targets[i].accept(this);
                 }
             }
+        }
+        if (node.value == null) {
+            scope.inAssignWithoutValue -= 1;
         }
         onAfterVisitAssign(node);
         return null;
@@ -1379,8 +1405,8 @@ public abstract class AbstractScopeAnalyzerVisitor extends VisitorBase {
                 nature);
         for (int i = 0; i < definitions.length; i++) {
             IDefinition foundDefinition = definitions[i];
-            if (foundDefinition instanceof AssignDefinition) {
-                AssignDefinition d = (AssignDefinition) foundDefinition;
+            if (foundDefinition instanceof AssignOrTypeAliasDefinition) {
+                AssignOrTypeAliasDefinition d = (AssignOrTypeAliasDefinition) foundDefinition;
 
                 //if the value is currently None, it will be set later on
                 if (d.value.equals("None")) {

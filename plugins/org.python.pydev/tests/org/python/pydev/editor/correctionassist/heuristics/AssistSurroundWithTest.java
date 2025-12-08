@@ -10,9 +10,11 @@ import java.util.List;
 
 import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.IDocument;
+import org.python.pydev.ast.surround_with.AssistSurroundWith;
 import org.python.pydev.core.TestCaseUtils;
 import org.python.pydev.core.docutils.PySelection;
 import org.python.pydev.core.proposals.CompletionProposalFactory;
+import org.python.pydev.editor.codecompletion.PyTemplateProposal;
 import org.python.pydev.editor.codecompletion.proposals.DefaultCompletionProposalFactory;
 import org.python.pydev.shared_core.code_completion.ICompletionProposalHandle;
 
@@ -62,7 +64,7 @@ public class AssistSurroundWithTest extends TestCase {
         PySelection ps = new PySelection(doc, 1, 0, 13);
         int offset = ps.getAbsoluteCursorOffset();
         List<ICompletionProposalHandle> props = assistSurroundWith.getProps(ps, null, null, null, null, offset);
-        props.get(0).apply(doc);
+        apply(props.get(0), doc);
         TestCaseUtils.assertContentsEqual("" +
                 "def m1():\n" +
                 "    try:\n" +
@@ -70,11 +72,16 @@ public class AssistSurroundWithTest extends TestCase {
                 "    #c\n" +
                 "        a = 10\n"
                 +
-                "    except${cursor}:\n" +
+                "    except Exception:\n" +
                 "        raise\n" +
                 "\n" +
                 "\n" +
                 "", doc.get());
+    }
+
+    private void apply(ICompletionProposalHandle iCompletionProposalHandle, IDocument doc) {
+        PyTemplateProposal p = (PyTemplateProposal) iCompletionProposalHandle;
+        p.getAsTemplateInfo().apply(doc);
     }
 
     public void testSurround3() throws Exception {
@@ -89,7 +96,7 @@ public class AssistSurroundWithTest extends TestCase {
         PySelection ps = new PySelection(doc, 1, 0, 14);
         int offset = ps.getAbsoluteCursorOffset();
         List<ICompletionProposalHandle> props = assistSurroundWith.getProps(ps, null, null, null, null, offset);
-        props.get(0).apply(doc);
+        apply(props.get(0), doc);
         TestCaseUtils.assertContentsEqual("" +
                 "def m1():\n" +
                 "try:\n" +
@@ -97,7 +104,7 @@ public class AssistSurroundWithTest extends TestCase {
                 "    #c\n" +
                 "    #    a = 10\n"
                 +
-                "except${cursor}:\n" +
+                "except Exception:\n" +
                 "    raise\n" +
                 "\n" +
                 "\n" +
@@ -110,11 +117,11 @@ public class AssistSurroundWithTest extends TestCase {
         IDocument doc = new Document("a = 10");
         PySelection ps = new PySelection(doc, 0, 0, 3);
         List<ICompletionProposalHandle> props = assistSurroundWith.getProps(ps, null, null, null, null, offset);
-        props.get(0).apply(doc);
+        apply(props.get(0), doc);
         TestCaseUtils.assertContentsEqual("" +
                 "try:\n" +
                 "    a = 10\n" +
-                "except${cursor}:\n" +
+                "except Exception:\n" +
                 "    raise" +
                 "",
                 doc.get());
@@ -128,7 +135,18 @@ public class AssistSurroundWithTest extends TestCase {
                 "\n");
         ps = new PySelection(doc, 1, 0, 11);
         props = assistSurroundWith.getProps(ps, null, null, null, null, offset);
-        props.get(0).apply(doc);
+        String additionalProposalInfo = props.get(0).getAdditionalProposalInfo();
+        TestCaseUtils.assertContentsEqual(
+                "    try:\n"
+                        + "    \n"
+                        + "    \n"
+                        + "        a = 10\n"
+                        + "    except Exception:\n"
+                        + "        raise",
+                additionalProposalInfo);
+
+        apply(props.get(0), doc);
+
         TestCaseUtils.assertContentsEqual("" +
                 "def m1():\n" +
                 "    try:\n" +
@@ -136,7 +154,7 @@ public class AssistSurroundWithTest extends TestCase {
                 "    \n" +
                 "        a = 10\n"
                 +
-                "    except${cursor}:\n" +
+                "    except Exception:\n" +
                 "        raise\n" +
                 "\n" +
                 "\n" +

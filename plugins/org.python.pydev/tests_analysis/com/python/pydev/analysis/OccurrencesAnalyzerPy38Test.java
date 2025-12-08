@@ -172,4 +172,43 @@ public class OccurrencesAnalyzerPy38Test extends AnalysisTestsBase {
             checkNoError();
         }
     }
+
+    public void testAbstractStaticMethod() {
+        doc = new Document("""
+                import abc
+                class Foo(abc.ABC):
+                    @abc.abstractstaticmethod
+                    def method(first_param) -> str:
+                        raise NotImplementedError
+                """);
+        analyzer = new OccurrencesAnalyzer();
+        checkNoError();
+
+    }
+
+    public void testAbstractClassMethod() {
+        doc = new Document("""
+                import abc
+                class Foo(abc.ABC):
+                    @abc.abstractclassmethod
+                    def method(first_param) -> str:
+                        raise NotImplementedError
+                """);
+        analyzer = new OccurrencesAnalyzer();
+        checkNoError();
+    }
+
+    public void testTypecheckOk() {
+        doc = new Document("""
+                import typing
+                if typing.TYPE_CHECKING:
+                    from typing import Optional
+
+                def method():
+                    a: Optional[int] = None
+                    print(a)
+                """);
+        analyzer = new OccurrencesAnalyzer();
+        checkNoError();
+    }
 }

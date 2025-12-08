@@ -38,6 +38,7 @@ import org.python.pydev.json.eclipsesource.JsonArray;
 import org.python.pydev.json.eclipsesource.JsonObject;
 import org.python.pydev.json.eclipsesource.JsonValue;
 import org.python.pydev.plugin.nature.PythonNature;
+import org.python.pydev.shared_core.callbacks.ICallback;
 import org.python.pydev.shared_core.callbacks.ICallback0;
 import org.python.pydev.shared_core.io.FileUtils;
 import org.python.pydev.shared_core.markers.PyMarkerUtils;
@@ -46,6 +47,7 @@ import org.python.pydev.shared_core.process.ProcessUtils;
 import org.python.pydev.shared_core.string.FastStringBuffer;
 import org.python.pydev.shared_core.string.StringUtils;
 import org.python.pydev.shared_core.structure.Tuple;
+import org.python.pydev.shared_core.utils.ArrayUtils;
 
 import com.python.pydev.analysis.external.ExternalAnalizerProcessWatchDoc;
 import com.python.pydev.analysis.external.IExternalAnalyzer;
@@ -152,9 +154,6 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
         String userArgs = StringUtils.replaceNewLines(
                 RuffPreferences.getRuffArgs(resource), " ");
         List<String> userArgsAsList = new ArrayList<>(Arrays.asList(ProcessUtils.parseArguments(userArgs)));
-        if (!userArgsAsList.contains("--format=json")) {
-            userArgsAsList.add("--format=json");
-        }
         // run ruff in project location
         IProject project = resource.getProject();
         if (project == null || !project.isAccessible()) {
@@ -170,6 +169,25 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
 
         IPythonNature nature = PythonNature.getPythonNature(project);
 
+        ICallback<String[], String[]> updateEnv = new ICallback<String[], String[]>() {
+
+            @Override
+            public String[] call(String[] arg) {
+                for (int i = 0; i < arg.length; i++) {
+                    // Update var
+                    if (arg[i].startsWith("RUFF_FORMAT=")) {
+                        arg[i] = "RUFF_FORMAT=json";
+                    } else if (arg[i].startsWith("RUFF_OUTPUT_FORMAT=")) {
+                        arg[i] = "RUFF_OUTPUT_FORMAT=json";
+                    }
+                }
+
+                // Duplicating should be Ok
+                return ArrayUtils.concatArrays(arg, new String[] {
+                        "RUFF_FORMAT=json", "RUFF_OUTPUT_FORMAT=json" });
+            }
+        };
+
         ICallback0<Process> launchProcessCallback;
         if (ruffLocation == null) {
             // use python -m ruff
@@ -182,18 +200,20 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
                     throw new RuntimeException(e);
                 }
                 cmdList.add(0, "ruff");
+                cmdList.add(1, "check");
                 String[] args = cmdList.toArray(new String[0]);
                 WriteToStreamHelper.write("Ruff: Executing command line:", out, "python", "-m", args);
                 SimplePythonRunner runner = new SimplePythonRunner();
                 String[] parameters = SimplePythonRunner.preparePythonCallParameters(interpreter, "-m", args);
 
-                Tuple<Process, String> r = runner.run(parameters, workingDir, nature, monitor, null);
+                Tuple<Process, String> r = runner.run(parameters, workingDir, nature, monitor, updateEnv);
                 return r.o1;
             };
 
         } else {
             String ruffExecutable = FileUtils.getFileAbsolutePath(ruffLocation);
             cmdList.add(0, ruffExecutable);
+            cmdList.add(1, "check");
 
             launchProcessCallback = () -> {
                 String[] args = cmdList.toArray(new String[0]);
@@ -203,7 +223,7 @@ import com.python.pydev.analysis.external.WriteToStreamHelper;
 
                 SimpleRunner simpleRunner = new SimpleRunner();
                 final Tuple<Process, String> r = simpleRunner.run(args, workingDir, nature,
-                        null, null);
+                        null, updateEnv);
                 Process process = r.o1;
                 return process;
             };

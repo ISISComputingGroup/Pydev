@@ -760,7 +760,11 @@ public class TextSelectionUtils {
      */
     public static int getFirstCharPosition(IDocument doc, int cursorOffset) throws BadLocationException {
         IRegion region;
-        region = doc.getLineInformationOfOffset(cursorOffset);
+        try {
+            region = doc.getLineInformationOfOffset(cursorOffset);
+        } catch (BadLocationException e) {
+            throw new BadLocationException("Error: bad offset: " + cursorOffset + " doc len: " + doc.getLength());
+        }
         int offset = region.getOffset();
         return offset + getFirstCharRelativePosition(doc, cursorOffset);
     }
@@ -1210,6 +1214,38 @@ public class TextSelectionUtils {
         } catch (BadLocationException e) {
             return "";
         }
+    }
+
+    /**
+     * @param string
+     * @param j
+     * @return
+     */
+    public static boolean stillInTok(String string, int j) {
+        char c = string.charAt(j);
+
+        return c != '\n' && c != '\r' && c != ' ' && c != '.' && c != '(' && c != ')' && c != ',' && c != ']'
+                && c != '[' && c != '#' && c != '\'' && c != '"';
+    }
+
+    public static String lowerChar(String s, int pos) {
+        char[] ds = s.toCharArray();
+        ds[pos] = Character.toLowerCase(ds[pos]);
+        return new String(ds);
+    }
+
+    /**
+     *
+     */
+    public static String getLineWithoutComments(TextSelectionUtils ps) {
+        return getLineWithoutComments(ps.getCursorLineContents());
+    }
+
+    /**
+     *
+     */
+    public static String getLineWithoutComments(String sel) {
+        return sel.replaceAll("#.*", "");
     }
 
     /**

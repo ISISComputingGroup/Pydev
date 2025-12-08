@@ -28,24 +28,25 @@ import org.eclipse.ui.internal.texteditor.spelling.NoCompletionsProposal;
 import org.eclipse.ui.texteditor.spelling.SpellingAnnotation;
 import org.eclipse.ui.texteditor.spelling.SpellingCorrectionProcessor;
 import org.eclipse.ui.texteditor.spelling.SpellingProblem;
+import org.python.pydev.ast.assist_assign.AssistAssign;
 import org.python.pydev.ast.codecompletion.ProposalsComparator;
+import org.python.pydev.ast.surround_with.AssistSurroundWith;
 import org.python.pydev.core.ExtensionHelper;
+import org.python.pydev.core.IAssistProps;
 import org.python.pydev.core.IPySyntaxHighlightingAndCodeCompletionEditor;
 import org.python.pydev.core.IPythonNature;
 import org.python.pydev.core.MisconfigurationException;
+import org.python.pydev.core.assist_fstring.AssistFString;
+import org.python.pydev.core.docstrings.AssistDocString;
 import org.python.pydev.core.docutils.PySelection;
 import org.python.pydev.core.log.Log;
 import org.python.pydev.editor.PyEdit;
-import org.python.pydev.editor.actions.PyAction;
-import org.python.pydev.editor.correctionassist.docstrings.AssistDocString;
-import org.python.pydev.editor.correctionassist.heuristics.AssistAssign;
-import org.python.pydev.editor.correctionassist.heuristics.AssistFString;
 import org.python.pydev.editor.correctionassist.heuristics.AssistImport;
 import org.python.pydev.editor.correctionassist.heuristics.AssistImportToLocal;
 import org.python.pydev.editor.correctionassist.heuristics.AssistPercentToFormat;
-import org.python.pydev.editor.correctionassist.heuristics.AssistSurroundWith;
 import org.python.pydev.shared_core.code_completion.ICompletionProposalHandle;
 import org.python.pydev.shared_core.image.IImageCache;
+import org.python.pydev.shared_core.string.TextSelectionUtils;
 import org.python.pydev.shared_ui.SharedUiPlugin;
 
 /**
@@ -157,7 +158,7 @@ public class PythonCorrectionProcessor implements IQuickAssistProcessor {
         PyEdit editor = (PyEdit) this.edit;
 
         List<ICompletionProposalHandle> results = new ArrayList<>();
-        String sel = PyAction.getLineWithoutComments(base);
+        String sel = TextSelectionUtils.getLineWithoutComments(base);
 
         List<IAssistProps> assists = new ArrayList<IAssistProps>();
         synchronized (PythonCorrectionProcessor.additionalAssists) {

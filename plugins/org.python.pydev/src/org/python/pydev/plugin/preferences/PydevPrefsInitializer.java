@@ -14,9 +14,11 @@ import org.eclipse.core.runtime.preferences.DefaultScope;
 import org.eclipse.jface.resource.StringConverter;
 import org.osgi.service.prefs.Preferences;
 import org.python.pydev.builder.todo.PyTodoPrefPage;
+import org.python.pydev.core.docstrings.DocstringPreferences;
+import org.python.pydev.core.imports.ImportPreferences;
+import org.python.pydev.core.preferences.PyDevCodeStylePreferences;
 import org.python.pydev.editor.codefolding.PyDevCodeFoldingPrefPage;
 import org.python.pydev.editor.commentblocks.CommentBlocksPreferences;
-import org.python.pydev.editor.correctionassist.docstrings.DocstringsPrefPage;
 import org.python.pydev.editor.hover.PyHoverPreferencesPage;
 import org.python.pydev.editor.saveactions.PydevSaveActionsPrefPage;
 import org.python.pydev.editorinput.PySourceLocatorPrefs;
@@ -26,7 +28,6 @@ import org.python.pydev.pyunit.preferences.PyUnitPrefsPage2;
 import org.python.pydev.shared_core.SharedCorePlugin;
 import org.python.pydev.shared_core.actions.LineCommentOption;
 import org.python.pydev.shared_ui.word_boundaries.SubWordPreferences;
-import org.python.pydev.ui.importsconf.ImportsPreferencesPage;
 import org.python.pydev.ui.wizards.project.IWizardNewProjectNameAndLocationPage;
 
 public class PydevPrefsInitializer extends AbstractPreferenceInitializer {
@@ -130,6 +131,7 @@ public class PydevPrefsInitializer extends AbstractPreferenceInitializer {
         node.putBoolean(PyDevEditorPreferences.KILL_SUBPROCESSES_WHEN_TERMINATING_PROCESS,
                 PyDevEditorPreferences.DEFAULT_KILL_SUBPROCESSES_WHEN_TERMINATING_PROCESS);
         node.putBoolean(PyDevEditorPreferences.GEVENT_DEBUGGING, PyDevEditorPreferences.DEFAULT_GEVENT_DEBUGGING);
+        node.putBoolean(PyDevEditorPreferences.DEBUG_JUST_MY_CODE, PyDevEditorPreferences.DEFAULT_DEBUG_JUST_MY_CODE);
         node.putBoolean(PyDevEditorPreferences.TRACE_DJANGO_TEMPLATE_RENDER_EXCEPTIONS,
                 PyDevEditorPreferences.DEFAULT_TRACE_DJANGO_TEMPLATE_RENDER_EXCEPTIONS);
         node.putBoolean(PyDevEditorPreferences.TRACE_JINJA2_TEMPLATE_RENDER_EXCEPTIONS,
@@ -219,10 +221,10 @@ public class PydevPrefsInitializer extends AbstractPreferenceInitializer {
         //[[[end]]]
 
         //coding style
-        node.putBoolean(PyCodeStylePreferencesPage.USE_LOCALS_AND_ATTRS_CAMELCASE,
-                PyCodeStylePreferencesPage.DEFAULT_USE_LOCALS_AND_ATTRS_CAMELCASE);
-        node.putInt(PyCodeStylePreferencesPage.USE_METHODS_FORMAT,
-                PyCodeStylePreferencesPage.DEFAULT_USE_METHODS_FORMAT);
+        node.putBoolean(PyDevCodeStylePreferences.USE_LOCALS_AND_ATTRS_CAMELCASE,
+                PyDevCodeStylePreferences.DEFAULT_USE_LOCALS_AND_ATTRS_CAMELCASE);
+        node.putInt(PyDevCodeStylePreferences.USE_METHODS_FORMAT,
+                PyDevCodeStylePreferences.DEFAULT_USE_METHODS_FORMAT);
 
         //Editor title
         node.putBoolean(PyTitlePreferencesPage.TITLE_EDITOR_NAMES_UNIQUE,
@@ -237,15 +239,15 @@ public class PydevPrefsInitializer extends AbstractPreferenceInitializer {
                 PyTitlePreferencesPage.DEFAULT_TITLE_EDITOR_DJANGO_MODULES_HANDLING);
 
         //imports
-        node.putBoolean(ImportsPreferencesPage.GROUP_IMPORTS, ImportsPreferencesPage.DEFAULT_GROUP_IMPORTS);
-        node.putBoolean(ImportsPreferencesPage.MULTILINE_IMPORTS, ImportsPreferencesPage.DEFAULT_MULTILINE_IMPORTS);
-        node.put(ImportsPreferencesPage.ISORT_LOCATION_OPTION, ImportsPreferencesPage.DEFAULT_ISORT_LOCATION_OPTION);
-        node.put(ImportsPreferencesPage.BREAK_IMPORTS_MODE, ImportsPreferencesPage.DEFAULT_BREAK_IMPORTS_MODE);
-        node.put(ImportsPreferencesPage.IMPORT_ENGINE, ImportsPreferencesPage.DEFAULT_IMPORT_ENGINE);
-        node.putBoolean(ImportsPreferencesPage.DELETE_UNUSED_IMPORTS,
-                ImportsPreferencesPage.DEFAULT_DELETE_UNUSED_IMPORTS);
-        node.putBoolean(ImportsPreferencesPage.FROM_IMPORTS_FIRST, ImportsPreferencesPage.DEFAULT_FROM_IMPORTS_FIRST);
-        node.putBoolean(ImportsPreferencesPage.SORT_NAMES_GROUPED, ImportsPreferencesPage.DEFAULT_SORT_NAMES_GROUPED);
+        node.putBoolean(ImportPreferences.GROUP_IMPORTS, ImportPreferences.DEFAULT_GROUP_IMPORTS);
+        node.putBoolean(ImportPreferences.MULTILINE_IMPORTS, ImportPreferences.DEFAULT_MULTILINE_IMPORTS);
+        node.put(ImportPreferences.ISORT_LOCATION_OPTION, ImportPreferences.DEFAULT_ISORT_LOCATION_OPTION);
+        node.put(ImportPreferences.BREAK_IMPORTS_MODE, ImportPreferences.DEFAULT_BREAK_IMPORTS_MODE);
+        node.put(ImportPreferences.IMPORT_ENGINE, ImportPreferences.DEFAULT_IMPORT_ENGINE);
+        node.putBoolean(ImportPreferences.DELETE_UNUSED_IMPORTS,
+                ImportPreferences.DEFAULT_DELETE_UNUSED_IMPORTS);
+        node.putBoolean(ImportPreferences.FROM_IMPORTS_FIRST, ImportPreferences.DEFAULT_FROM_IMPORTS_FIRST);
+        node.putBoolean(ImportPreferences.SORT_NAMES_GROUPED, ImportPreferences.DEFAULT_SORT_NAMES_GROUPED);
 
         //hover
         node.putBoolean(PyHoverPreferencesPage.COMBINE_HOVER_INFO,
@@ -267,10 +269,10 @@ public class PydevPrefsInitializer extends AbstractPreferenceInitializer {
                 PyUnitPrefsPage2.DEFAULT_TEST_RUNNER_DEFAULT_PARAMETERS);
 
         // Docstrings
-        node.put(DocstringsPrefPage.P_DOCSTRINGCHARACTER, DocstringsPrefPage.DEFAULT_P_DOCSTRINGCHARACTER);
-        node.put(DocstringsPrefPage.P_DOCSTRINGSTYLE, DocstringsPrefPage.DEFAULT_P_DOCSTRINGSTYLE);
-        node.put(DocstringsPrefPage.P_TYPETAGGENERATION, DocstringsPrefPage.DEFAULT_P_TYPETAGGENERATION);
-        node.put(DocstringsPrefPage.P_DONT_GENERATE_TYPETAGS, DocstringsPrefPage.DEFAULT_P_DONT_GENERATE_TYPETAGS);
+        node.put(DocstringPreferences.DOCSTRING_CHARACTER, DocstringPreferences.DEFAULT_DOCSTRING_CHARACTER);
+        node.put(DocstringPreferences.DOCSTRING_STYLE, DocstringPreferences.DEFAULT_DOCSTRING_STYLE);
+        node.put(DocstringPreferences.TYPETAG_GENERATION, DocstringPreferences.DEFAULT_TYPETAG_GENERATION);
+        node.put(DocstringPreferences.DONT_GENERATE_TYPETAGS, DocstringPreferences.DEFAULT_DONT_GENERATE_TYPETAGS);
 
         //save actions
         node.putBoolean(PydevSaveActionsPrefPage.SORT_IMPORTS_ON_SAVE,

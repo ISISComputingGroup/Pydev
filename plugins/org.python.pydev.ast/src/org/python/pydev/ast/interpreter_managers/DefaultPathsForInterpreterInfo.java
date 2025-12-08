@@ -12,14 +12,20 @@
 package org.python.pydev.ast.interpreter_managers;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
+import org.python.pydev.core.log.Log;
+import org.python.pydev.plugin.nature.PythonNature;
 import org.python.pydev.shared_core.SharedCorePlugin;
 import org.python.pydev.shared_core.io.FileUtils;
 
@@ -27,8 +33,11 @@ public class DefaultPathsForInterpreterInfo {
 
     private final Set<IPath> rootPaths;
 
-    public DefaultPathsForInterpreterInfo() {
-        rootPaths = getRootPaths();
+    public DefaultPathsForInterpreterInfo(boolean resolvingInterpreter) {
+        boolean addInterpreterInfoSubstitutions = !resolvingInterpreter;
+        // When resolving the interpreter, we can't try to resolve variables from the
+        // interpreter itself as we could get into a recursion error.
+        rootPaths = getRootPaths(addInterpreterInfoSubstitutions);
 
     }
 
@@ -36,7 +45,11 @@ public class DefaultPathsForInterpreterInfo {
         return !isChildOfRootPath(data, rootPaths);
     }
 
-    public boolean exists(String data) {
+    public boolean forceDeselect(String data) {
+        return isRootPath(data, rootPaths);
+    }
+
+    public static boolean exists(String data) {
         return new File(data).exists();
     }
 
@@ -48,9 +61,33 @@ public class DefaultPathsForInterpreterInfo {
      */
     public static boolean isChildOfRootPath(String data, Set<IPath> rootPaths) {
         IPath path = Path.fromOSString(data);
+        java.nio.file.Path nativePath = new File(data).toPath();
+
         for (IPath p : rootPaths) {
             if (FileUtils.isPrefixOf(p, path)) {
                 return true;
+            }
+            try {
+                if (Files.isSameFile(nativePath, p.toFile().toPath())) {
+                    return true;
+                }
+            } catch (IOException e) {
+                Log.log(e);
+            }
+        }
+        return false;
+    }
+
+    public static boolean isRootPath(String data, Set<IPath> rootPaths) {
+        java.nio.file.Path nativePath = new File(data).toPath();
+
+        for (IPath p : rootPaths) {
+            try {
+                if (Files.isSameFile(nativePath, p.toFile().toPath())) {
+                    return true;
+                }
+            } catch (IOException e) {
+                Log.log(e);
             }
         }
         return false;
@@ -60,7 +97,7 @@ public class DefaultPathsForInterpreterInfo {
      * Creates a Set of the root paths of all projects (and the workspace root itself).
      * @return A HashSet of root paths.
      */
-    public static HashSet<IPath> getRootPaths() {
+    public static HashSet<IPath> getRootPaths(boolean addInterpreterInfoSubstitutions) {
         HashSet<IPath> rootPaths = new HashSet<IPath>();
         if (SharedCorePlugin.inTestMode()) {
             return rootPaths;
@@ -75,8 +112,23 @@ public class DefaultPathsForInterpreterInfo {
             IPath location = iProject.getLocation();
             if (location != null) {
                 IPath abs = location.makeAbsolute();
-                if (!FileUtils.isPrefixOf(rootLocation, abs)) {
-                    rootPaths.add(abs);
+                rootPaths.add(abs);
+            }
+
+            PythonNature nature = PythonNature.getPythonNature(iProject);
+            if (nature != null) {
+                try {
+                    List<String> splitted = nature.getPythonPathNature().getOnlyProjectPythonPathStr(true,
+                            addInterpreterInfoSubstitutions);
+                    for (String s : splitted) {
+                        try {
+                            rootPaths.add(Path.fromOSString(FileUtils.getFileAbsolutePath(s)));
+                        } catch (Exception e) {
+                            Log.log(e);
+                        }
+                    }
+                } catch (CoreException e) {
+                    Log.log(e);
                 }
             }
         }

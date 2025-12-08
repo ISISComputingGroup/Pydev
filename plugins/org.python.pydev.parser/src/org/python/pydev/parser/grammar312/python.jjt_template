@@ -242,6 +242,7 @@ TOKEN : /* KEYWORDS */
 |   < RAISE: "raise" >
 |   < GLOBAL: "global" >
 |   < NONLOCAL: "nonlocal" >
+|   < TYPE: "type" >
 |   < ASSERT: "assert" >
 |   < AS: "as" >
 |   < WITH: "with" >
@@ -499,10 +500,10 @@ Expr eval_input(): {}
 }
 
 
-//funcdef: 'def' NAME parameters ['->' test] ':' suite
+//funcdef: 'def' NAME [type_params] parameters ['->' test] ':' suite
 void funcdef(): {}
 {
-    $DEF_START parameters() [{grammarActions.addSpecialToken("->", STRATEGY_BEFORE_NEXT);}<MINUS_GREATER> test()#funcdef_return_annottation] $COLON_END_DEF
+    $DEF_START [type_params()] parameters() [{grammarActions.addSpecialToken("->", STRATEGY_BEFORE_NEXT);}<MINUS_GREATER> test()#funcdef_return_annottation] $COLON_END_DEF
         suite()
 }
 
@@ -519,6 +520,56 @@ void decorators(): {}
 void begin_decorator(): {}
 { $AT namedexpr_test()
 }
+
+// type_alias:
+//     | "type" NAME [type_params] '=' expression
+void type_alias():  {}
+{
+	<TYPE> Name() [type_params()] {grammarActions.addSpecialToken("=", STRATEGY_BEFORE_NEXT);} <EQUAL> expr()
+}
+
+// type_params: '[' type_param_seq  ']'
+void type_params():  {}
+{ {grammarActions.findTokenAndAdd("[");}<LBRACKET>
+  [type_param_seq()]
+  {grammarActions.findTokenAndAdd("]");}<RBRACKET>
+}
+
+// type_param_seq: ','.type_param+ [',']
+
+void type_param_seq() #void: {}
+{
+    type_param() (LOOKAHEAD(2){grammarActions.findTokenAndAdd(",");}<COMMA> type_param())* [{grammarActions.findTokenAndAdd(",");}<COMMA>]
+}
+
+
+// type_param:
+//     | NAME [type_param_bound] //TypeVar
+//     | '*' NAME  //TypeVarTuple
+//     | '**' NAME //ParamSpec
+void type_param() #void: {}
+{
+    type_var()
+    | type_var_tuple()
+    | type_var_param_spec()
+
+}
+
+void type_var(): {}
+{
+	Name() [LOOKAHEAD(2)<COLON> {grammarActions.addSpecialToken(":", STRATEGY_BEFORE_NEXT);} test()]
+}
+
+void type_var_tuple(): {}
+{
+	<MULTIPLY> Name()
+}
+
+void type_var_param_spec(): {}
+{
+	<POWER> Name()
+}
+
 
 //parameters: '(' [typedargslist] ')'
 void parameters() #void:  {}
@@ -720,6 +771,9 @@ void stmt() #void: {}
     	LOOKAHEAD(match_stmt())
     	match_stmt()
     |
+    	LOOKAHEAD(type_alias())
+    	type_alias()
+    |
         non_async_stmt()
 }
 
@@ -739,7 +793,7 @@ void non_async_stmt() #void: {}
 $SIMPLE_STMT
 
 
-//small_stmt: expr_stmt | del_stmt | pass_stmt | flow_stmt | import_stmt | global_stmt | nonlocal_stmt | assert_stmt
+//small_stmt: expr_stmt | del_stmt | pass_stmt | flow_stmt | import_stmt | global_stmt | nonlocal_stmt | assert_stmt | type_alias
 void small_stmt() #void: {SimpleNode simpleNode;Token spStr;}
 {
     expr_stmt()
@@ -1187,13 +1241,13 @@ void with_stmt(): {}
 	  	LOOKAHEAD(with_item())
 	  	(
 	  		with_item()
-			($COMMA with_item())*
+			($COMMA [with_item()])*
 		)
 	  	|
 		(
 			<LPAREN>
 			with_item()
-			($COMMA with_item())*
+			($COMMA [with_item()])*
 		  	<RPAREN>
 	  	)
   	)
@@ -1305,16 +1359,11 @@ void power() #void: {}
 //atom_expr: [AWAIT] atom trailer*
 void atom_expr() #void: {}
 {
-    {
-        // getToken(1) just peeks the next token without consuming it.
-        Token t = getToken(1);
-        if(insideAsync != 0 && t != null && t.kind == AWAIT){
-            // The await statement is only valid inside an async block!
-            await_atom_expr();
-            return;
-        }
-    }
-    atom() (trailer())*
+    (
+    await_atom_expr()
+    )
+    |
+    (atom() (trailer())*)
 }
 
 void await_atom_expr(): {Token spStr;}
@@ -1540,10 +1589,10 @@ void async_funcdef() #void : {}
     }
 }
 
-//classdef: 'class' NAME ['(' [arglist] ')'] ':' suite
+//classdef: 'class' NAME [type_params] ['(' [arglist] ')'] ':' suite
 void classdef(): {Token spStr;Token spStr2;}
 {
-    $START_CLASS [$LPAREN3   [arglist()] $RPAREN ] $COLON_END_DEF
+    $START_CLASS [type_params()] [$LPAREN3   [arglist()] $RPAREN ] $COLON_END_DEF
         suite()
 }
 
@@ -1637,13 +1686,11 @@ Token Name() #Name:
         (
             t = <NAME>
          |
-            t = <ASYNC>
-         |
-            t = <AWAIT>
-         |
          	t = <MATCH>
          |
          	t = <CASE>
+         |
+         	t = <TYPE>
         )
     }catch(ParseException e){
         t = handleErrorInName(e);

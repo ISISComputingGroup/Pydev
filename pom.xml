@@ -124,10 +124,10 @@
 <project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <properties>
-    <tycho-version>4.0.3</tycho-version>
+    <tycho-version>4.0.11</tycho-version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <repository.id>eclipse-2023-09</repository.id>
-    <repository.url>https://download.eclipse.org/releases/2023-09/</repository.url>
+    <repository.id>eclipse-2024-12</repository.id>
+    <repository.url>https://download.eclipse.org/releases/2024-12/</repository.url>
   </properties>
   <prerequisites>
     <maven>3.9.5</maven>
@@ -135,7 +135,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.python.pydev</groupId>
   <artifactId>parent</artifactId>
-  <version>11.0.3-SNAPSHOT</version>
+  <version>13.1.0-SNAPSHOT</version>
   <name>Pydev Build Parent</name>
   <packaging>pom</packaging>
   <modules>

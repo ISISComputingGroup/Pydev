@@ -104,6 +104,7 @@ import org.python.pydev.ui.pythonpathconf.PythonSelectionLibrariesDialog;
 import com.python.pydev.analysis.flake8.Flake8Preferences;
 import com.python.pydev.analysis.mypy.MypyPreferences;
 import com.python.pydev.analysis.pylint.PyLintPreferences;
+import com.python.pydev.analysis.pyright.PyrightPreferences;
 import com.python.pydev.analysis.ruff.RuffPreferences;
 
 /**
@@ -232,6 +233,19 @@ public class PydevPlugin extends AbstractUIPlugin {
             if (RuffPreferences.useRuffConsole(projectAdaptable)) {
                 IOConsoleOutputStream console = MessageConsoles.getConsoleOutputStream("Ruff",
                         UIConstants.RUFF_ICON);
+
+                return ((string) -> {
+                    console.write(string);
+                });
+            } else {
+                return null;
+            }
+        });
+
+        PyrightPreferences.createPyrightStream = ((IAdaptable projectAdaptable) -> {
+            if (PyrightPreferences.usePyrightConsole(projectAdaptable)) {
+                IOConsoleOutputStream console = MessageConsoles.getConsoleOutputStream("PyRight",
+                        UIConstants.PYRIGHT_ICON);
 
                 return ((string) -> {
                     console.write(string);
@@ -490,7 +504,11 @@ public class PydevPlugin extends AbstractUIPlugin {
         this.isAlive = false;
         try {
             //stop the running shells
-            AbstractShell.shutdownAllShells();
+            try {
+                AbstractShell.shutdownAllShells();
+            } catch (Exception e) {
+                Log.log(e);
+            }
 
             //save the natures (code completion stuff) -- and only the ones initialized
             //(no point in getting the ones not initialized)
