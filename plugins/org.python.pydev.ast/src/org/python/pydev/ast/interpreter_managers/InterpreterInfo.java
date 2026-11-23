@@ -75,7 +75,7 @@ import org.xml.sax.InputSource;
 
 public class InterpreterInfo implements IInterpreterInfo {
 
-    private volatile Map<String, String> condaEnvCache = new HashMap<>();
+    private volatile Tuple<Map<String, String>, Boolean> condaEnvCache = new Tuple<>(new HashMap<>(), false);
 
     //We want to force some libraries to be analyzed as source (e.g.: django)
     private static String[] LIBRARIES_TO_IGNORE_AS_FORCED_BUILTINS = new String[] { "django" };
@@ -1757,20 +1757,24 @@ public class InterpreterInfo implements IInterpreterInfo {
         }
 
         fillMapWithEnv(env, computedMap, null, null);
+        final String exeOrJar = FileUtils.getFileAbsolutePath(this.getExecutableOrJar());
+        boolean condaEnvActivated = false;
+
         if (this.activateCondaEnv) {
             File condaPrefix = this.getCondaPrefix();
             if (condaPrefix == null) {
-                Log.logInfo("Unable to find conda prefix for: " + this.getExecutableOrJar());
+                Log.logInfo("Unable to find conda prefix for: " + exeOrJar);
             } else if (condaPrefix.exists()) {
                 try {
-                    Map<String, String> condaEnv = this.condaEnvCache;
-                    if (condaEnv.isEmpty()) {
+                    Tuple<Map<String, String>, Boolean> condaEnv = this.condaEnvCache;
+                    if (condaEnv.o1.isEmpty()) {
                         condaEnv = obtainCondaEnv(condaPrefix);
                         this.condaEnvCache = condaEnv;
                     }
+                    condaEnvActivated = condaEnv.o2;
                     Set<String> pythonPathEnvVariableNames = getPythonPathEnvVariableNames();
 
-                    Set<Entry<String, String>> entrySet = condaEnv.entrySet();
+                    Set<Entry<String, String>> entrySet = condaEnv.o1.entrySet();
                     for (Entry<String, String> entry : entrySet) {
                         if (computedMap.containsKey(entry.getKey())) {
                             if (keysThatShouldNotBeUpdated.contains(entry.getKey())) {
@@ -1794,13 +1798,21 @@ public class InterpreterInfo implements IInterpreterInfo {
         if (hasEnvVarsToUpdate) {
             fillMapWithEnv(envVariables, computedMap, keysThatShouldNotBeUpdated, getStringVariableManager()); //will override the keys already there unless they're in keysThatShouldNotBeUpdated
         }
+        if (!condaEnvActivated) {
+            String path = computedMap.get("PATH");
+            if (path != null) {
+                String sep = SimpleRunner.getPythonPathSeparator();
+                path = new File(exeOrJar).getParent() + sep + path;
+                computedMap.put("PATH", path);
+            }
+        }
 
         String[] ret = createEnvWithMap(computedMap);
 
         return ret;
     }
 
-    public Map<String, String> obtainCondaEnv(File condaPrefix)
+    public Tuple<Map<String, String>, Boolean> obtainCondaEnv(File condaPrefix)
             throws Exception {
         Map<String, String> condaEnv = new HashMap<String, String>();
         String[] cmdLine;
@@ -1823,7 +1835,7 @@ public class InterpreterInfo implements IInterpreterInfo {
         File condaActivation = getCondaActivationFile(condaBinDir);
         if (!condaActivation.exists()) {
             Log.log("Could not find Conda activate file: " + condaActivation);
-            return initialEnv;
+            return new Tuple<Map<String, String>, Boolean>(initialEnv, false);
         }
 
         initialEnv.put("__PYDEV_CONDA_PREFIX__", condaPrefix.toString());
@@ -1849,7 +1861,7 @@ public class InterpreterInfo implements IInterpreterInfo {
                 condaEnv.put(split.o1, split.o2);
             }
         }
-        return condaEnv;
+        return new Tuple<Map<String, String>, Boolean>(condaEnv, true);
     }
 
     public static Map<String, String> createMapFromEnv(String[] env) {
@@ -1969,7 +1981,7 @@ public class InterpreterInfo implements IInterpreterInfo {
     @Override
     public void setModificationStamp(int modificationStamp) {
         this.modificationStamp = modificationStamp;
-        this.condaEnvCache = new HashMap<>();
+        this.condaEnvCache = new Tuple<>(new HashMap<>(), false);
     }
 
     @Override
