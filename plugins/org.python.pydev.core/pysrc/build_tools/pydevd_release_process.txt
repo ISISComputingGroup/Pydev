@@ -72,6 +72,14 @@ pip install -U "setuptools>=0.9"
 pip install -U "pip>=1.4" "wheel>=0.21" twine
 deactivate
 
+conda create -y -f -n py314_64 python=3.14 -c conda-forge
+activate py314_64
+pip install cython
+pip install "django>=1.9"
+pip install -U "setuptools>=0.9"
+pip install -U "pip>=1.4" "wheel>=0.21" twine
+deactivate
+
 ### UPDATE CYTHON
 
 activate py38_64
@@ -95,6 +103,10 @@ pip install cython --upgrade
 deactivate
 
 activate py313_64
+pip install cython --upgrade
+deactivate
+
+activate py314_64
 pip install cython --upgrade
 deactivate
 

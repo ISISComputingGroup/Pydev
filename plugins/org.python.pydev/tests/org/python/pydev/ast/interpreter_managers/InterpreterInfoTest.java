@@ -377,7 +377,7 @@ public class InterpreterInfoTest extends TestCase {
         assertTrue(new File(pythonExe).exists());
         InterpreterInfo interpreterInfo = new InterpreterInfo("3.8", pythonExe, new ArrayList<String>());
         File condaPrefix = interpreterInfo.getCondaPrefix();
-        Map<String, String> condaEnv = interpreterInfo.obtainCondaEnv(condaPrefix);
+        Map<String, String> condaEnv = interpreterInfo.obtainCondaEnv(condaPrefix).o1;
 
         if (!condaEnv.containsKey(testVariable)) {
             throw new AssertionFailedError("Expected variable `" + testVariable + "` to exist in conda `"

@@ -81,7 +81,7 @@ jobs:
             os: ubuntu-latest
             PYDEVD_USE_CYTHON: YES
           - name: "windows-py314-cython"
-            python: "3.14-dev"
+            python: "3.14"
             os: windows-latest
             PYDEVD_USE_CYTHON: YES
 
